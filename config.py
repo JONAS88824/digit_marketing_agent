@@ -20,6 +20,32 @@ _ENV_FILE = Path(__file__).parent / ".env"
 MODE_MOCK = "mock"
 MODE_LIVE = "live"
 
+# ===== 图像生成的独立开关 =====
+# 单独一个开关，不跟 DATA_SOURCE_MODE 共用，原因是它们的风险完全不同：
+# 取数是只读的，最多浪费点配额；**生成图片是按张收费的真花钱**。
+# 所以默认 mock（本地画占位图，零成本），要真出图必须显式打开。
+IMAGE_MODE_ENV = "IMAGE_GENERATION_MODE"
+IMAGE_MODEL_ENV = "IMAGE_MODEL"
+IMAGE_MAX_PER_CALL_ENV = "IMAGE_MAX_PER_CALL"
+
+# 默认模型。已用账号实测确认可用（client.models.list()）：
+# 该账号下**没有任何 imagen-* 模型**，Imagen 系列已在 Gemini API 下线，
+# 可用的是这批 Gemini 原生图像模型，且它们只支持 generateContent，
+# 不支持 Imagen 的 predict/generate_images 接口。
+DEFAULT_IMAGE_MODEL = "gemini-3.1-flash-image"
+
+# 实测该账号可用的图像模型，按"便宜→贵"排列
+AVAILABLE_IMAGE_MODELS = (
+    "gemini-3.1-flash-lite-image",
+    "gemini-2.5-flash-image",
+    "gemini-3.1-flash-image",
+    "gemini-3-pro-image",
+)
+
+# 单次调用最多出几张图。硬上限，防止一句话烧掉一笔钱。
+DEFAULT_IMAGE_MAX_PER_CALL = 3
+IMAGE_HARD_CAP_PER_CALL = 6
+
 SOURCE_ADS = "google_ads"
 SOURCE_GA4 = "ga4"
 # 关键词规划走 Keyword Planner，它属于 Google Ads API，凭证与 SOURCE_ADS 共用，
@@ -231,6 +257,53 @@ def remaining_work(source: str) -> list[str]:
             f"已就绪，把 .env 的 DATA_SOURCE_MODE 改成 {MODE_LIVE} 即可用真实数据。"
         )
     return steps
+
+
+def image_generation_mode() -> str:
+    """图像生成是 mock（本地占位图）还是 live（真调模型、真花钱）。
+
+    只有明确写 live 才算 live。宁可给占位图，也不要在用户没预期的时候扣费。
+    """
+    load()
+    return MODE_LIVE if _get(IMAGE_MODE_ENV).lower() == MODE_LIVE else MODE_MOCK
+
+
+def image_model() -> str:
+    """要用哪个图像模型。没配就用默认的。"""
+    load()
+    return _get(IMAGE_MODEL_ENV) or DEFAULT_IMAGE_MODEL
+
+
+def image_max_per_call() -> int:
+    """单次调用允许出几张图。读不到或读到非法值就用默认值，并受硬上限约束。"""
+    load()
+    raw = _get(IMAGE_MAX_PER_CALL_ENV)
+    try:
+        value = int(raw) if raw else DEFAULT_IMAGE_MAX_PER_CALL
+    except ValueError:
+        value = DEFAULT_IMAGE_MAX_PER_CALL
+    return max(1, min(value, IMAGE_HARD_CAP_PER_CALL))
+
+
+def image_generation_status() -> dict:
+    """图像生成的配置体检。不返回 API key 本身，只说配没配。"""
+    load()
+    has_key = bool(_get("GOOGLE_API_KEY"))
+    mode = image_generation_mode()
+    model = image_model()
+    return {
+        "mode": mode,
+        "model": model,
+        "model_is_known_available": model in AVAILABLE_IMAGE_MODELS,
+        "api_key_configured": has_key,
+        "max_images_per_call": image_max_per_call(),
+        "effective_mode": MODE_LIVE if (mode == MODE_LIVE and has_key) else MODE_MOCK,
+        "cost_warning": (
+            "live 模式按张收费，且免费额度不覆盖图像生成，需要账号已开通付费。"
+            "mock 模式在本地画占位图，零成本。"
+        ),
+        "available_models": list(AVAILABLE_IMAGE_MODELS),
+    }
 
 
 def describe() -> dict:

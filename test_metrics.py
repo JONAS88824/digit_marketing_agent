@@ -291,9 +291,14 @@ def test_env_example_contains_no_values():
         if "=" not in line or line.lstrip().startswith("#"):
             continue
         key, value = line.split("=", 1)
-        # 只有模式开关允许有默认值，其余必须为空
-        allowed = "mock" if key == "DATA_SOURCE_MODE" else ""
-        assert value == allowed, f"{key} 在模板里带了值：{value}"
+        # 非敏感的开关允许带默认值，凡是凭证/密钥/路径一律必须为空
+        allowed_defaults = {
+            "DATA_SOURCE_MODE": "mock",
+            "IMAGE_GENERATION_MODE": "mock",
+            "IMAGE_MODEL": "gemini-3.1-flash-image",
+            "IMAGE_MAX_PER_CALL": "3",
+        }
+        assert value == allowed_defaults.get(key, ""), f"{key} 在模板里带了值：{value}"
 
 
 if __name__ == "__main__":
