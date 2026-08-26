@@ -249,12 +249,17 @@ def _fetch_ga4_rows_live(
                dimensions=[Dimension(name="date"),
                            Dimension(name="sessionDefaultChannelGroup")],
                metrics=[Metric(name="sessions"), Metric(name="totalUsers"),
-                        Metric(name="conversions"), Metric(name="totalRevenue")],
+                        Metric(name="keyEvents"), Metric(name="totalRevenue")],
                date_ranges=[DateRange(start_date=..., end_date=...)],
            ))
-    3. 逐行转成 Ga4Row，注意两个坑：
+    3. 逐行转成 Ga4Row，注意四个坑：
        - 返回值全是字符串，要自己转 int / float
        - 服务账号必须在 GA4 后台加为"查看者"，否则报 403 而不是空数据
+       - **指标名 `conversions` 已废弃**（2024-05 起改名 `keyEvents`），
+         同批改名的还有 sessionConversionRate → sessionKeyEventRate。
+         旧名字暂时还能调，但已进入弃用期，新代码一律用 keyEvents。
+       - keyEvents 是**所有关键事件的合计**，不是某一个转化。要看单个转化，
+         得加 eventName 维度 + dimensionFilter
 
     实现完成后，把 config.py 里 FETCH_IMPLEMENTED[SOURCE_GA4] 改成 True。
     """

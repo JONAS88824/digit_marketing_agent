@@ -13,6 +13,7 @@ import pathlib
 from datetime import date, timedelta
 
 from . import config, data, metrics, tools
+from .test_runner import run
 
 
 
@@ -295,23 +296,5 @@ def test_env_example_contains_no_values():
         assert value == allowed, f"{key} 在模板里带了值：{value}"
 
 
-def _run_all() -> int:
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    failed = 0
-    for test in tests:
-        try:
-            test()
-        except AssertionError as exc:
-            failed += 1
-            print(f"FAIL  {test.__name__}: {exc}")
-        except Exception as exc:  # noqa: BLE001 - 自检脚本要看到全部错误
-            failed += 1
-            print(f"ERROR {test.__name__}: {type(exc).__name__}: {exc}")
-        else:
-            print(f"ok    {test.__name__}")
-    print(f"\n{len(tests) - failed}/{len(tests)} passed")
-    return 1 if failed else 0
-
-
 if __name__ == "__main__":
-    raise SystemExit(_run_all())
+    raise SystemExit(run(globals()))

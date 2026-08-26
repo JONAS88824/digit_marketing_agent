@@ -22,6 +22,13 @@ MODE_LIVE = "live"
 
 SOURCE_ADS = "google_ads"
 SOURCE_GA4 = "ga4"
+# 关键词规划走 Keyword Planner，它属于 Google Ads API，凭证与 SOURCE_ADS 共用，
+# 但"取数逻辑写没写"是独立的一件事，所以单列一个数据源。
+SOURCE_KEYWORD_PLANNER = "keyword_planner"
+SOURCE_SEARCH_CONSOLE = "search_console"
+# 竞品投放词只能买第三方情报（SEMrush / Ahrefs / DataForSEO 等）。
+# 这里做成厂商中立：只认一个 base_url + api_key，换厂商不用改架构。
+SOURCE_COMPETITOR = "competitor_intel"
 
 # 调真实 Google Ads API 必须齐备的凭证
 _ADS_REQUIRED = (
@@ -39,14 +46,60 @@ _ADS_OPTIONAL = ("GOOGLE_ADS_LOGIN_CUSTOMER_ID",)
 # GA4 只需要"媒体资源 ID"+"服务账号密钥文件"两样，没有第三样。
 _GA4_REQUIRED = ("GA4_PROPERTY_ID", "GA4_CREDENTIALS_JSON_PATH")
 
-_REQUIRED_BY_SOURCE = {SOURCE_ADS: _ADS_REQUIRED, SOURCE_GA4: _GA4_REQUIRED}
+# Search Console 需要"查哪个站点"+"用什么身份查"。
+# siteUrl 有两种写法：URL 前缀属性 https://example.com/ ，
+# 或域名属性 sc-domain:example.com（覆盖全部子域与协议）。
+_SEARCH_CONSOLE_REQUIRED = ("SEARCH_CONSOLE_SITE_URL", "SEARCH_CONSOLE_CREDENTIALS_JSON_PATH")
 
-# 真实 API 需要的库，用于给出准确的安装提示
-_PIP_PACKAGES = {SOURCE_ADS: "google-ads", SOURCE_GA4: "google-analytics-data"}
+# 第三方竞品情报：厂商中立，只要端点和密钥
+_COMPETITOR_REQUIRED = ("COMPETITOR_INTEL_API_KEY", "COMPETITOR_INTEL_BASE_URL")
+
+_REQUIRED_BY_SOURCE = {
+    SOURCE_ADS: _ADS_REQUIRED,
+    SOURCE_GA4: _GA4_REQUIRED,
+    # Keyword Planner 是 Google Ads API 的一部分，凭证要求完全一致
+    SOURCE_KEYWORD_PLANNER: _ADS_REQUIRED,
+    SOURCE_SEARCH_CONSOLE: _SEARCH_CONSOLE_REQUIRED,
+    SOURCE_COMPETITOR: _COMPETITOR_REQUIRED,
+}
+
+# 所有数据源，按体检报告里的展示顺序
+ALL_SOURCES = (
+    SOURCE_ADS,
+    SOURCE_GA4,
+    SOURCE_KEYWORD_PLANNER,
+    SOURCE_SEARCH_CONSOLE,
+    SOURCE_COMPETITOR,
+)
+
+# 真实 API 需要的库，用于给出准确的安装提示。
+# 竞品情报只是 HTTP 调用，不需要专用库，所以是 None。
+_PIP_PACKAGES = {
+    SOURCE_ADS: "google-ads",
+    SOURCE_GA4: "google-analytics-data",
+    SOURCE_KEYWORD_PLANNER: "google-ads",
+    SOURCE_SEARCH_CONSOLE: "google-api-python-client",
+    SOURCE_COMPETITOR: None,
+}
+
+# 用来判断库装没装的导入路径
+_IMPORT_PATHS = {
+    SOURCE_ADS: "google.ads.googleads",
+    SOURCE_GA4: "google.analytics.data_v1beta",
+    SOURCE_KEYWORD_PLANNER: "google.ads.googleads",
+    SOURCE_SEARCH_CONSOLE: "googleapiclient.discovery",
+    SOURCE_COMPETITOR: None,
+}
 
 # 真实取数逻辑写完了没有。这是唯一的真相来源：
-# data.py 实现完对应的 _fetch_*_live 之后，把这里改成 True。
-FETCH_IMPLEMENTED = {SOURCE_ADS: False, SOURCE_GA4: False}
+# 实现完对应的 _fetch_*_live 之后，把这里改成 True。
+FETCH_IMPLEMENTED = {
+    SOURCE_ADS: False,
+    SOURCE_GA4: False,
+    SOURCE_KEYWORD_PLANNER: False,
+    SOURCE_SEARCH_CONSOLE: False,
+    SOURCE_COMPETITOR: False,
+}
 
 # 各数据源剩余工作的落地位置，直接告诉用户"后期怎么做"
 _IMPLEMENTATION_HINTS = {
@@ -61,6 +114,27 @@ _IMPLEMENTATION_HINTS = {
         "service_account.Credentials.from_service_account_file(GA4_CREDENTIALS_JSON_PATH) "
         "建凭证，传给 BetaAnalyticsDataClient(credentials=...)，"
         "再用 run_report() 查 property=properties/<GA4_PROPERTY_ID>。"
+    ),
+    SOURCE_KEYWORD_PLANNER: (
+        "在 keywords_data.py 的 _fetch_keyword_ideas_live 里用 "
+        "client.get_service('KeywordPlanIdeaService').generate_keyword_ideas()，"
+        "请求里填 keyword_seed（或 url_seed / site_seed）+ geo_target_constants + language，"
+        "结果的 keyword_idea_metrics 带 avg_monthly_searches、competition、"
+        "average_cpc_micros 和 monthly_search_volumes（12 个月趋势）。"
+        "所有 micros 字段都要除以 1_000_000。"
+    ),
+    SOURCE_SEARCH_CONSOLE: (
+        "在 keywords_data.py 的 _fetch_seo_queries_live 里用 "
+        "build('searchconsole', 'v1', credentials=...)，调 "
+        "searchanalytics().query(siteUrl=..., body={'dimensions': ['query'], ...})。"
+        "注意返回的 ctr 是 0~1 的小数不是百分比；rowLimit 上限 25000，"
+        "超过要用 startRow 翻页。"
+    ),
+    SOURCE_COMPETITOR: (
+        "在 keywords_data.py 的 _fetch_competitor_keywords_live 里用 requests 或 httpx "
+        "调 COMPETITOR_INTEL_BASE_URL，带上 COMPETITOR_INTEL_API_KEY，"
+        "把返回结果转成 CompetitorKeyword。厂商换了只改这一个函数，"
+        "上层不用动——这也是为什么这里不绑定具体厂商。"
     ),
 }
 
@@ -101,8 +175,9 @@ def source_status(source: str) -> SourceStatus:
     load()
     required = _REQUIRED_BY_SOURCE[source]
     missing = tuple(key for key in required if not _get(key))
+    uses_ads_credentials = source in (SOURCE_ADS, SOURCE_KEYWORD_PLANNER)
     optional_present = tuple(
-        key for key in _ADS_OPTIONAL if source == SOURCE_ADS and _get(key)
+        key for key in _ADS_OPTIONAL if uses_ads_credentials and _get(key)
     )
     return SourceStatus(
         source=source,
@@ -122,13 +197,12 @@ def is_live(source: str) -> bool:
 
 
 def missing_package(source: str) -> str | None:
-    """返回该数据源缺失的 pip 包名；已安装则返回 None。"""
+    """返回该数据源缺失的 pip 包名；已安装或不需要专用库则返回 None。"""
     import importlib.util
 
-    module = {
-        SOURCE_ADS: "google.ads.googleads",
-        SOURCE_GA4: "google.analytics.data_v1beta",
-    }[source]
+    module = _IMPORT_PATHS[source]
+    if module is None:  # 纯 HTTP 调用，不需要专用库
+        return None
     try:
         installed = importlib.util.find_spec(module) is not None
     except ModuleNotFoundError:
@@ -163,7 +237,7 @@ def describe() -> dict:
     """汇总配置体检结果，供工具层返回给模型。不含任何凭证值。"""
     mode = data_source_mode()
     report = {}
-    for source in (SOURCE_ADS, SOURCE_GA4):
+    for source in ALL_SOURCES:
         status = source_status(source)
         package = missing_package(source)
         report[source] = {
