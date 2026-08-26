@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from google.adk.tools import ToolContext
 
+from ...session_state import remember
 from . import data as keywords_data
 from . import metrics as keywords
 
@@ -50,14 +51,6 @@ def _idea_to_dict(idea: keywords_data.KeywordIdea, with_trend: bool = False) -> 
     if with_trend:
         row["trend"] = keywords.summarize_trend(idea.monthly_volumes)
     return row
-
-
-def _remember(tool_context: ToolContext | None, **kwargs) -> None:
-    if not tool_context:
-        return
-    for key, value in kwargs.items():
-        if value is not None:
-            tool_context.state[key] = value
 
 
 def list_keyword_scope() -> dict:
@@ -136,7 +129,7 @@ def plan_keywords(
     truncated = len(ideas) > MAX_KEYWORDS_RETURNED
     shown = ideas[:MAX_KEYWORDS_RETURNED]
 
-    _remember(
+    remember(
         tool_context,
         current_industry=industry,
         current_product=product,
@@ -197,7 +190,7 @@ def forecast_keywords(
         }
 
     estimate = keywords.estimate_cost(matched, share_of_voice=share_of_voice)
-    _remember(tool_context, current_keywords=[i.text for i in matched])
+    remember(tool_context, current_keywords=[i.text for i in matched])
     return {
         "status": "success",
         "source": "keyword_planner",
@@ -284,7 +277,7 @@ def get_competitor_keywords(
             "竞品的产品线和利润结构可能和我们不同。要结合意图和转化数据判断。"
         )
 
-    _remember(tool_context, current_competitor=competitor)
+    remember(tool_context, current_competitor=competitor)
     return result
 
 
@@ -312,7 +305,7 @@ def get_seo_queries(
         }
 
     shown = filtered[:MAX_KEYWORDS_RETURNED]
-    _remember(tool_context, current_seo_queries=[r.query for r in shown])
+    remember(tool_context, current_seo_queries=[r.query for r in shown])
     return {
         "status": "success",
         "source": "search_console",
@@ -368,7 +361,7 @@ def get_converting_search_terms(
     total_conversions = sum(r.conversions for r in filtered)
     total_revenue = round(sum(r.revenue for r in filtered), 2)
 
-    _remember(tool_context, current_converting_terms=[r.term for r in shown])
+    remember(tool_context, current_converting_terms=[r.term for r in shown])
     return {
         "status": "success",
         "source": "ga4",
@@ -471,7 +464,7 @@ def analyze_keyword_structure(
         for key in (keywords.normalize(keyword),)
     ]
 
-    _remember(tool_context, current_keywords=cleaned)
+    remember(tool_context, current_keywords=cleaned)
     return {
         "status": "success",
         "input_count": len(keywords_list),
@@ -548,7 +541,7 @@ def record_keyword_plan(
         "negative_keywords": keywords.dedupe(negative_keywords),
         "rationale": rationale,
     }
-    _remember(tool_context, keyword_plan=plan)
+    remember(tool_context, keyword_plan=plan)
 
     return {
         "status": "warning" if warnings else "success",

@@ -17,6 +17,7 @@ from ..sub_agents.creative import data as creative_data
 from ..sub_agents.creative import image_quality
 from ..sub_agents.creative import metrics as creative
 from ..sub_agents.creative import tools as creative_tools
+from ..sub_agents.creative import visual_tools
 from .test_runner import run
 
 
@@ -200,15 +201,15 @@ def test_validate_ad_copy_rejects_empty_input():
 
 
 def test_build_prompts_rejects_unknown_style_and_size():
-    assert creative_tools.build_visual_prompts("theme", "不存在的风格")["status"] == "error"
-    bad_size = creative_tools.build_visual_prompts("theme", "科技感", ["banner"])
+    assert visual_tools.build_visual_prompts("theme", "不存在的风格")["status"] == "error"
+    bad_size = visual_tools.build_visual_prompts("theme", "科技感", ["banner"])
     assert bad_size["status"] == "error"
     assert "可选" in bad_size["error_message"]
 
 
 def test_build_prompts_embeds_brand_style_and_forbids_text():
     """prompt 必须带上品牌色与风格，并明确要求画面无文字。"""
-    result = creative_tools.build_visual_prompts(
+    result = visual_tools.build_visual_prompts(
         "a pair of running shoes on a wet track", "科技感", ["landscape"]
     )
     assert result["status"] == "success"
@@ -238,16 +239,56 @@ def test_image_generation_defaults_to_mock():
     assert "按张收费" in status["cost_warning"]
 
 
-def test_image_model_is_one_that_actually_exists():
-    """默认模型必须在实测可用列表里。
+def test_three_tiers_map_to_the_nano_banana_models():
+    """三档必须精确对上 Nano Banana 三个型号。
 
-    Imagen 系列已在 Gemini API 下线（本账号 models.list() 里一个都没有），
-    所以默认模型不能是 imagen-*。
+    模型 ID 是用本账号 models.list() 读 display_name 核对出来的。
+    这条断言把对应关系钉死：以后谁改错了，测试立刻红。
     """
-    status = config.image_generation_status()
-    assert status["model_is_known_available"] is True
-    assert not status["model"].startswith("imagen")
-    assert all(not m.startswith("imagen") for m in status["available_models"])
+    assert config.image_tier("draft")["model"] == "gemini-3.1-flash-lite-image"
+    assert config.image_tier("standard")["model"] == "gemini-3.1-flash-image"
+    assert config.image_tier("premium")["model"] == "gemini-3-pro-image"
+
+    assert config.image_tier("draft")["display_name"] == "Nano Banana 2 Lite"
+    assert config.image_tier("standard")["display_name"] == "Nano Banana 2"
+    assert config.image_tier("premium")["display_name"] == "Nano Banana Pro"
+
+
+def test_no_retired_models_anywhere():
+    """下线和淘汰的模型一个都不许留。
+
+    Imagen 系列已在 Gemini API 全线下线（本账号 models.list() 里一个都没有）；
+    gemini-2.5-flash-image（旧 Nano Banana）已被三档路由替换掉。
+    """
+    models = set(config.image_models_in_use().values())
+    assert not any(m.startswith("imagen") for m in models), models
+    assert "gemini-2.5-flash-image" not in models, models
+    assert len(models) == 3, f"三档应该是三个不同模型：{models}"
+
+
+def test_default_tier_is_the_balanced_one():
+    """默认档必须是主力推荐的 standard，不能默认烧最贵的。"""
+    assert config.default_image_tier() == "standard"
+    assert config.image_tier(None)["tier"] == "standard"
+
+
+def test_unknown_tier_falls_back_instead_of_crashing():
+    """档位名是模型填的，填错了要回退并如实标注，不能让整轮对话崩掉。"""
+    result = config.image_tier("超高清")
+    assert result["tier"] == "standard"
+    assert result["fell_back"] is True
+    assert result["requested"] == "超高清"
+
+
+def test_render_reports_which_tier_was_used():
+    """汇报里必须说清用了哪一档、哪个模型，用户才知道花了多少钱。"""
+    for quality, expected in (("draft", "Nano Banana 2 Lite"), ("premium", "Nano Banana Pro")):
+        result = visual_tools.render_visual_assets(
+            "a running shoe", "科技感", ["square"], quality=quality
+        )
+        assert result["quality_tier"] == quality
+        assert result["model_display_name"] == expected
+        assert quality in result["tier_note"]
 
 
 def test_image_count_per_call_is_capped():
@@ -257,7 +298,7 @@ def test_image_count_per_call_is_capped():
 
 def test_render_in_mock_mode_produces_correctly_sized_files():
     """mock 出图要真的落盘，且尺寸严格等于目标广告位尺寸（含裁剪后的 1.91:1）。"""
-    result = creative_tools.render_visual_assets(
+    result = visual_tools.render_visual_assets(
         "a pair of running shoes on a wet rubber track", "科技感", ["square", "landscape"]
     )
     assert result["status"] == "success"
@@ -275,7 +316,7 @@ def test_render_in_mock_mode_produces_correctly_sized_files():
 
 def test_mock_render_warns_it_is_not_usable():
     """占位图不能拿去投放，这句提醒必须在返回值里。"""
-    result = creative_tools.render_visual_assets("a shoe", "简约风", ["square"])
+    result = visual_tools.render_visual_assets("a shoe", "简约风", ["square"])
     assert "不能拿去投放" in result["cost_note"]
 
 
@@ -288,7 +329,7 @@ def test_render_refuses_to_exceed_per_call_cap():
 
     config._get = fake_get
     try:
-        result = creative_tools.render_visual_assets("a shoe", "科技感", None)
+        result = visual_tools.render_visual_assets("a shoe", "科技感", None)
         assert result["status"] == "error"
         assert "超过单次上限" in result["error_message"]
     finally:
@@ -361,7 +402,7 @@ def test_inspect_asset_returns_metrics_and_asks_model_to_look():
         path = pathlib.Path(tmp) / "t.png"
         _make_test_image(path)
         result = asyncio.run(
-            creative_tools.inspect_visual_asset(
+            visual_tools.inspect_visual_asset(
                 str(path), ad_copy="限时直降六百元", target_size="landscape"
             )
         )
@@ -392,7 +433,7 @@ def test_inspect_asset_saves_artifact_when_context_available():
         path = pathlib.Path(tmp) / "banner.png"
         _make_test_image(path)
         result = asyncio.run(
-            creative_tools.inspect_visual_asset(str(path), tool_context=ctx)
+            visual_tools.inspect_visual_asset(str(path), tool_context=ctx)
         )
 
     assert result["artifact_name"] == "banner.png"
@@ -406,7 +447,7 @@ def test_inspect_asset_rejects_unknown_target_size():
         path = pathlib.Path(tmp) / "t.png"
         _make_test_image(path)
         result = asyncio.run(
-            creative_tools.inspect_visual_asset(str(path), target_size="billboard")
+            visual_tools.inspect_visual_asset(str(path), target_size="billboard")
         )
     assert result["status"] == "error"
     assert "可选" in result["error_message"]

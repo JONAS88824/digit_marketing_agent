@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from google.adk.tools import ToolContext
 
 from ... import config
+from ...session_state import remember
 from . import data, metrics
 
 # 单次查询允许的最大天数，防止模型一次拉光全部数据
@@ -63,15 +64,6 @@ def _safe_fetch(fetch, *args) -> tuple[tuple, dict | None]:
         return fetch(*args), None
     except data.DataSourceNotReady as exc:
         return (), {"status": "error", "error_message": str(exc)}
-
-
-def _remember(tool_context: ToolContext | None, **kwargs) -> None:
-    """把这轮分析的对象记进会话状态，下轮用户说"那上周呢"能接上。"""
-    if not tool_context:
-        return
-    for key, value in kwargs.items():
-        if value is not None:
-            tool_context.state[key] = value
 
 
 def _validate_campaign(campaign: str | None) -> dict | None:
@@ -151,7 +143,7 @@ def get_ads_metrics(
             "error_message": f"{start} 到 {end} 区间没有 Google Ads 数据。",
         }
 
-    _remember(tool_context, current_campaign=campaign, current_days=days)
+    remember(tool_context, current_campaign=campaign, current_days=days)
     return {
         "status": "success",
         "source": "google_ads",
@@ -211,7 +203,7 @@ def compare_ads_metrics(
     previous = metrics.aggregate_ads(previous_rows)
     result = metrics.compare_aggregates(current, previous, _ADS_COMPARE_KEYS)
 
-    _remember(tool_context, current_campaign=campaign, current_days=window_days)
+    remember(tool_context, current_campaign=campaign, current_days=window_days)
     return {
         "status": "success",
         "source": "google_ads",
@@ -254,7 +246,7 @@ def get_ga4_metrics(
             "error_message": f"{start} 到 {end} 区间没有 GA4 数据。",
         }
 
-    _remember(tool_context, current_channel=channel, current_days=days)
+    remember(tool_context, current_channel=channel, current_days=days)
     return {
         "status": "success",
         "source": "ga4",
@@ -310,7 +302,7 @@ def compare_ga4_metrics(
     previous = metrics.aggregate_ga4(previous_rows)
     result = metrics.compare_aggregates(current, previous, _GA4_COMPARE_KEYS)
 
-    _remember(tool_context, current_channel=channel, current_days=window_days)
+    remember(tool_context, current_channel=channel, current_days=window_days)
     return {
         "status": "success",
         "source": "ga4",
@@ -377,7 +369,7 @@ def get_daily_trend(
         for day in sorted(by_day)
     ]
 
-    _remember(tool_context, current_campaign=campaign, current_metric=metric)
+    remember(tool_context, current_campaign=campaign, current_metric=metric)
     return {
         "status": "success",
         "source": "google_ads",

@@ -1,13 +1,14 @@
 """营销文案与视觉创意专员。
 
 只定义 agent 本身。工具实现在同目录的 tools.py，
+文案工具在 tools.py、视觉工具在 visual_tools.py；
 文案计算在 metrics.py，图片计算在 image_quality.py，素材库在 data.py。
 """
 
 from google.adk.agents.llm_agent import Agent
 from google.adk.tools.load_artifacts_tool import load_artifacts_tool
 
-from . import tools
+from . import tools, visual_tools
 
 creative_agent = Agent(
     model='gemini-2.5-flash',
@@ -63,10 +64,22 @@ Google Ads 标题额度 30 个单位、描述 90 个单位，而**中文全角�
 2. **theme 用英文写**。图像模型对英文的材质、光线、色彩词理解细得多。
 3. **1.91:1 需要裁剪**：图像模型不支持 1.91:1，横版 banner 是按 16:9 生成再居中裁掉上下。
    所以 theme 里要让主体和留白**避开画面上下边缘**，否则裁剪时会被切掉。
-4. **成本必须提前说**：render_visual_assets 在 live 模式下按张计费，
-   且免费额度不覆盖图像生成。出图前先调 list_creative_scope 看当前是 mock 还是 live，
-   如果是 live 且用户没提过预算，先告知会产生费用再执行。
-5. mock 模式产出的是**占位图，不能拿去投放**，汇报时必须说清这一点。
+4. **按用途选档位**（render_visual_assets 的 quality 参数）：
+   | 档位 | 模型 | 什么时候用 |
+   |---|---|---|
+   | draft | Nano Banana 2 Lite | 社媒缩略图批量制作、多方案快速草稿预览、大规模自动化素材测试 |
+   | standard | Nano Banana 2 | **默认选它**。标准营销 Banner、电商产品背景替换、响应式广告素材 |
+   | premium | Nano Banana Pro | 品牌主海报、需高精修的宣发图、对文字排版与逼真度要求极高的精品素材 |
+
+   两条选档纪律：
+   - 用户要"几个方案先看看"时用 draft，别一上来就烧 premium。
+     **先用 draft 出多版草稿、让用户挑中一版，再用 premium 精修**，比全程 premium 省得多。
+   - 用户明确说"品牌主视觉""要印刷""文字必须清晰"时才上 premium。
+5. **成本必须提前说**：live 模式下按张计费，档位越高越贵（draft < standard < premium），
+   且免费额度不覆盖图像生成。出图前先调 list_creative_scope 看当前是 mock 还是 live；
+   如果是 live 且用户没提过预算，先告知会产生费用、用哪一档，再执行。
+6. mock 模式产出的是**占位图，不能拿去投放**，汇报时必须说清这一点。
+7. 汇报时要说明用了哪一档、对应哪个模型，用户才知道花了多少钱、要不要升档重出。
 
 ## 素材质量诊断流程
 
@@ -89,9 +102,9 @@ Google Ads 标题额度 30 个单位、描述 90 个单位，而**中文全角�
         tools.list_creative_scope,
         tools.get_product_usps,
         tools.validate_ad_copy,
-        tools.build_visual_prompts,
-        tools.render_visual_assets,
-        tools.inspect_visual_asset,
+        visual_tools.build_visual_prompts,
+        visual_tools.render_visual_assets,
+        visual_tools.inspect_visual_asset,
         # ADK 内置：让模型能把 artifact 里的图片真的读进来看
         load_artifacts_tool,
     ],

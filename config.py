@@ -25,22 +25,50 @@ MODE_LIVE = "live"
 # 取数是只读的，最多浪费点配额；**生成图片是按张收费的真花钱**。
 # 所以默认 mock（本地画占位图，零成本），要真出图必须显式打开。
 IMAGE_MODE_ENV = "IMAGE_GENERATION_MODE"
-IMAGE_MODEL_ENV = "IMAGE_MODEL"
 IMAGE_MAX_PER_CALL_ENV = "IMAGE_MAX_PER_CALL"
+IMAGE_DEFAULT_TIER_ENV = "IMAGE_DEFAULT_TIER"
 
-# 默认模型。已用账号实测确认可用（client.models.list()）：
-# 该账号下**没有任何 imagen-* 模型**，Imagen 系列已在 Gemini API 下线，
-# 可用的是这批 Gemini 原生图像模型，且它们只支持 generateContent，
-# 不支持 Imagen 的 predict/generate_images 接口。
-DEFAULT_IMAGE_MODEL = "gemini-3.1-flash-image"
+# ===== 三档生图模型路由 =====
+# 模型 ID 与档位的对应关系是用本账号的 client.models.list() 读 display_name
+# 核对出来的，不是猜的：
+#   Nano Banana 2 Lite → gemini-3.1-flash-lite-image
+#   Nano Banana 2      → gemini-3.1-flash-image
+#   Nano Banana Pro    → gemini-3-pro-image
+# 旧的 gemini-2.5-flash-image（display_name 就叫 "Nano Banana"）已不再使用。
+# Imagen 系列在本账号一个都查不到，已在 Gemini API 全线下线。
+#
+# 对外只暴露 draft / standard / premium 三个档位名，不让模型直接填模型 ID——
+# 模型 ID 会变（现在就已经换过一代），档位名不会。
+TIER_DRAFT = "draft"
+TIER_STANDARD = "standard"
+TIER_PREMIUM = "premium"
 
-# 实测该账号可用的图像模型，按"便宜→贵"排列
-AVAILABLE_IMAGE_MODELS = (
-    "gemini-3.1-flash-lite-image",
-    "gemini-2.5-flash-image",
-    "gemini-3.1-flash-image",
-    "gemini-3-pro-image",
-)
+IMAGE_TIERS = {
+    TIER_DRAFT: {
+        "model": "gemini-3.1-flash-lite-image",
+        "display_name": "Nano Banana 2 Lite",
+        "positioning": "极致性价比、高并发",
+        "use_for": "社媒缩略图批量制作、多方案快速草稿预览、大规模自动化素材测试",
+        "env": "IMAGE_MODEL_DRAFT",
+    },
+    TIER_STANDARD: {
+        "model": "gemini-3.1-flash-image",
+        "display_name": "Nano Banana 2",
+        "positioning": "专业级速度与质量平衡（主力推荐）",
+        "use_for": "生产环境的标准营销 Banner、电商产品背景替换、响应式广告素材",
+        "env": "IMAGE_MODEL_STANDARD",
+    },
+    TIER_PREMIUM: {
+        "model": "gemini-3-pro-image",
+        "display_name": "Nano Banana Pro",
+        "positioning": "SOTA 顶级视觉效果",
+        "use_for": "品牌主海报、需要高精修的产品宣发图、对文字排版与逼真度要求极高的精品素材",
+        "env": "IMAGE_MODEL_PREMIUM",
+    },
+}
+
+# 不指定档位时用哪一档。standard 是主力推荐，也是成本与质量的平衡点。
+DEFAULT_IMAGE_TIER = TIER_STANDARD
 
 # 单次调用最多出几张图。硬上限，防止一句话烧掉一笔钱。
 DEFAULT_IMAGE_MAX_PER_CALL = 3
@@ -268,10 +296,42 @@ def image_generation_mode() -> str:
     return MODE_LIVE if _get(IMAGE_MODE_ENV).lower() == MODE_LIVE else MODE_MOCK
 
 
-def image_model() -> str:
-    """要用哪个图像模型。没配就用默认的。"""
+def default_image_tier() -> str:
+    """不指定档位时用哪一档。可用 .env 的 IMAGE_DEFAULT_TIER 改。"""
     load()
-    return _get(IMAGE_MODEL_ENV) or DEFAULT_IMAGE_MODEL
+    requested = _get(IMAGE_DEFAULT_TIER_ENV).lower()
+    return requested if requested in IMAGE_TIERS else DEFAULT_IMAGE_TIER
+
+
+def image_tier(tier: str | None = None) -> dict:
+    """解析出某个档位的完整信息，含实际要调的模型 ID。
+
+    档位名不认识时**回退到默认档并如实标注**，而不是抛异常——
+    出图是被模型调起来的，模型偶尔会填错档位名，
+    这种情况下退回主力档继续干活，比让整轮对话崩掉合理。
+
+    Args:
+        tier: draft / standard / premium。传 None 用默认档。
+    """
+    load()
+    requested = (tier or default_image_tier()).lower()
+    resolved = requested if requested in IMAGE_TIERS else default_image_tier()
+    spec = IMAGE_TIERS[resolved]
+    return {
+        "tier": resolved,
+        # 每一档都能用 .env 单独覆盖模型 ID，方便模型换代时不用改代码
+        "model": _get(spec["env"]) or spec["model"],
+        "display_name": spec["display_name"],
+        "positioning": spec["positioning"],
+        "use_for": spec["use_for"],
+        "fell_back": resolved != requested,
+        "requested": requested,
+    }
+
+
+def image_models_in_use() -> dict[str, str]:
+    """三个档位当前各自对应哪个模型 ID。"""
+    return {name: image_tier(name)["model"] for name in IMAGE_TIERS}
 
 
 def image_max_per_call() -> int:
@@ -286,23 +346,30 @@ def image_max_per_call() -> int:
 
 
 def image_generation_status() -> dict:
-    """图像生成的配置体检。不返回 API key 本身，只说配没配。"""
+    """图像生成的配置体检：模式、三档模型、单次上限。不返回 API key 本身。"""
     load()
     has_key = bool(_get("GOOGLE_API_KEY"))
     mode = image_generation_mode()
-    model = image_model()
     return {
         "mode": mode,
-        "model": model,
-        "model_is_known_available": model in AVAILABLE_IMAGE_MODELS,
-        "api_key_configured": has_key,
-        "max_images_per_call": image_max_per_call(),
         "effective_mode": MODE_LIVE if (mode == MODE_LIVE and has_key) else MODE_MOCK,
+        "api_key_configured": has_key,
+        "default_tier": default_image_tier(),
+        "max_images_per_call": image_max_per_call(),
+        "tiers": {
+            name: {
+                "model": info["model"],
+                "display_name": info["display_name"],
+                "positioning": info["positioning"],
+                "use_for": info["use_for"],
+            }
+            for name, info in ((n, image_tier(n)) for n in IMAGE_TIERS)
+        },
         "cost_warning": (
             "live 模式按张收费，且免费额度不覆盖图像生成，需要账号已开通付费。"
+            "档位越高越贵：draft < standard < premium。"
             "mock 模式在本地画占位图，零成本。"
         ),
-        "available_models": list(AVAILABLE_IMAGE_MODELS),
     }
 
 

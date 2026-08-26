@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from .data import KeywordIdea, MonthlyVolume
+from .schema import KeywordIdea, MonthlyVolume
 
 # 趋势变化超过这个百分比，才认为是真的在涨/在跌，否则算正常波动
 SIGNIFICANT_TREND_PCT = 20.0

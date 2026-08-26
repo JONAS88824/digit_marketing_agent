@@ -5,7 +5,7 @@
 > **本文件是本仓库的进度单一来源。** 每次 git 提交后都要更新它，
 > 具体要求见文末[文档维护要求](#文档维护要求)。
 
-**最近更新**：2026-08-26 ｜ **当前状态**：可运行（演示数据）｜ **测试**：113/113 通过
+**最近更新**：2026-08-26 ｜ **当前状态**：可运行（演示数据）｜ **测试**：120/120 通过
 
 ---
 
@@ -37,9 +37,10 @@ tools（模型能调的接口）、metrics（纯计算）、data（取数与接�
 ```
 digital_marketing_agent/
 ├── __init__.py               # 把 root_agent 转出来给 ADK 发现（关键，见下）
-├── config.py                 # 全局配置 & 凭证诊断（5 个数据源 + 图像开关）
+├── config.py                 # 全局配置 & 凭证诊断（5 个数据源 + 三档生图路由）
 ├── root_agent.py             # 根 agent：只做意图分发与全局路由，不挂业务工具
 ├── main.py                   # 启动入口：命令行对话 / 一次性提问 / Web 服务
+├── session_state.py          # 共用的会话状态写入（原来三个模块各抄了一份）
 │
 ├── sub_agents/
 │   ├── performance/          # 1. 投放表现分析
@@ -52,11 +53,14 @@ digital_marketing_agent/
 │   │   ├── agent.py          # keyword_agent
 │   │   ├── tools.py          # 9 个工具
 │   │   ├── metrics.py        # 词根 / 趋势 / 成本预估 / 集合对比
-│   │   └── data.py           # 词库 + Keyword Planner / GSC / 竞品接缝
+│   │   ├── schema.py         # 数据形状契约（mock 与真实 API 共用）
+│   │   ├── mock.py           # 演示词库生成（接真 API 后可整个删掉）
+│   │   └── data.py           # 取数入口 + Keyword Planner / GSC / 竞品接缝
 │   │
 │   └── creative/             # 3. 营销文案与视觉创意
 │       ├── agent.py          # creative_agent
-│       ├── tools.py          # 7 个工具（含 ADK 内置 load_artifacts）
+│       ├── tools.py          # 文案工具 3 个
+│       ├── visual_tools.py   # 视觉工具 3 个（唯一会花钱的地方）
 │       ├── metrics.py        # 字符宽度 / RSA 合规校验
 │       ├── image_quality.py  # 多模态图片诊断（Pillow）
 │       └── data.py           # 卖点库 / 品牌风格 / 尺寸规范
@@ -65,8 +69,8 @@ digital_marketing_agent/
 │   ├── test_runner.py        # 共享运行器（不依赖 pytest）
 │   ├── test_metrics.py       # 27 个
 │   ├── test_keywords.py      # 42 个
-│   ├── test_creative.py      # 36 个
-│   └── test_structure.py     # 8 个：守住目录约定和入口
+│   ├── test_creative.py      # 40 个
+│   └── test_structure.py     # 11 个：守住目录约定、拆分边界和入口
 │
 ├── generated/                # 出图落盘处（已 gitignore）
 ├── .env / .env.example / .gitignore / PROJECT_STATUS.md
@@ -146,7 +150,7 @@ flowchart TB
     SwB -.->|"待接入"| E3["Keyword Planner"]
     SwB -.->|"待接入"| E4["Search Console"]
     SwB -.->|"待接入"| E5["第三方竞品情报"]
-    SwC -->|"已可用"| E6["Gemini 原生图像模型<br/>Imagen 系列已下线"]
+    SwC -->|"已可用"| E6["Nano Banana 三档路由<br/>Lite / 2 / Pro<br/>Imagen 系列已下线"]
 ```
 
 **贯穿全局的一条红线：数字由 Python 算，判断交给模型。**
@@ -175,6 +179,10 @@ vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三�
 | `sub_agents/*/tools.py` | 模型能调的接口 | 函数名+类型注解+docstring 就是模型的说明书 |
 | `sub_agents/*/metrics.py` | 纯计算层 | 不依赖 ADK，改动必须补测试 |
 | `sub_agents/*/data.py` | 取数与真实 API 接缝 | 真实取数只需填 `_fetch_*_live` 函数体 |
+| `session_state.py` | 共用的会话状态写入 | 三个模块共用，别再各抄一份 |
+| `sub_agents/keywords/schema.py` | 数据形状契约 | 不许 import mock，否则删 mock 会带走契约 |
+| `sub_agents/keywords/mock.py` | 演示词库生成 | 接上真 API 后可整个删掉，删除边界要保持干净 |
+| `sub_agents/creative/visual_tools.py` | 视觉工具：prompt、出图、诊断 | **唯一会花钱的文件**，成本护栏都在这里 |
 | `sub_agents/creative/image_quality.py` | 图片客观指标（Pillow） | 只用 Pillow，不引 numpy |
 | `tests/test_runner.py` | 共享测试运行器 | 不依赖 pytest，同时兼容 pytest 收集 |
 | `tests/test_structure.py` | 守住目录约定与入口 | 重构目录后第一个要跑的就是它 |
@@ -182,7 +190,21 @@ vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三�
 | `.env.example` | 可提交的配置模板 | 有测试检查它不含真值 |
 
 每个模块的四层分工：**agent** 定人格与流程，**tools** 给模型接口，
-**metrics** 算准数字，**data** 管取数。跨模块共用的只有 `config.py`。
+**metrics** 算准数字，**data** 管取数。跨模块共用的只有 `config.py` 和 `session_state.py`。
+
+### 哪些文件拆了、哪些没拆（以及为什么）
+
+拆分的判据是**有没有真实收益**，不是行数好看：
+
+| 文件 | 原行数 | 处理 | 理由 |
+|---|---|---|---|
+| `creative/tools.py` | 664 | **拆成 tools + visual_tools** | 文案和出图是两件不相干的事，依赖也不同（Pillow / 图像模型只有视觉侧需要）。拆开后文案侧不再拖进图片依赖，成本护栏也集中到一个文件里好审 |
+| `keywords/data.py` | 560 | **拆成 schema + mock + data** | 形状是契约、mock 是内容、data 是入口。接上真 API 后 `mock.py` 可以整个删掉，删除边界干净 |
+| `keywords/tools.py` | 592 | **不拆** | 9 个工具是**一条工作流**（摸范围→选词→转化锚→竞品/SEO→结构→存档→预测），依赖完全相同。拆开只会把一条流程散到两个文件，没有任何依赖收益 |
+| `performance/tools.py` | 430 | 不拆 | 未到需要拆的规模 |
+
+有测试盯着拆分边界：`schema.py` 不许 import mock、文案工具里不许出现 Pillow
+和图像模型调用、三个模块不许再各抄一份会话写入函数。
 
 ## 已完成
 
@@ -337,14 +359,28 @@ Imagen 3 已在 Gemini API 下线，Imagen 4 也已到停用日期。
 所以网上大量教程里的 `client.models.generate_images()`（Imagen 的 predict 接口）
 在这里根本调不通。
 
-实测该账号可用的图像模型（都只支持 `generateContent`，不支持 `generate_images`）：
+### 三档模型路由
 
-| 模型 | 定位 |
-|---|---|
-| `gemini-3.1-flash-lite-image` | 最便宜，1K 分辨率 |
-| `gemini-2.5-flash-image` | 上一代，官方建议迁走 |
-| `gemini-3.1-flash-image` | **当前默认**，文字渲染好、支持参考图 |
-| `gemini-3-pro-image` | 最贵，图文交错输出 |
+对外只暴露 `draft` / `standard` / `premium` 三个档位名，不让模型直接填模型 ID——
+模型 ID 会变（现在就已经换过一代），档位名不会。
+对应关系是用本账号 `models.list()` 读 `display_name` 核对出来的：
+
+| 档位 | 模型 ID | display_name | 定位 | 用在哪 |
+|---|---|---|---|---|
+| `draft` | `gemini-3.1-flash-lite-image` | Nano Banana 2 Lite | 极致性价比、高并发 | 社媒缩略图批量、多方案草稿预览、大规模自动化素材测试 |
+| `standard` | `gemini-3.1-flash-image` | Nano Banana 2 | 速度与质量平衡（**默认档**） | 标准营销 Banner、电商产品背景替换、响应式广告素材 |
+| `premium` | `gemini-3-pro-image` | Nano Banana Pro | SOTA 顶级视觉效果 | 品牌主海报、高精修宣发图、对文字排版与逼真度要求极高的精品素材 |
+
+旧的 `gemini-2.5-flash-image`（display_name 就叫 "Nano Banana"）已移除。
+
+用法：`render_visual_assets(..., quality="draft")`。档位名填错会**回退到默认档
+并如实标注**，不抛异常——档位是模型填的，偶尔填错不该让整轮对话崩掉。
+
+省钱的用法是 **draft 出多版草稿 → 用户挑中一版 → premium 精修**，
+比全程 premium 便宜得多。agent 的 instruction 里写了这条纪律。
+
+每档的模型 ID 都能在 `.env` 里单独覆盖（`IMAGE_MODEL_DRAFT` / `_STANDARD` / `_PREMIUM`），
+模型换代时不用改代码。
 
 正确的调用方式：
 
@@ -396,8 +432,8 @@ client.models.generate_content(
 # ---- 跑自检测试（不联网、不消耗 API 配额）----
 .venv\Scripts\python.exe -m digital_marketing_agent.tests.test_metrics     # 27 个
 .venv\Scripts\python.exe -m digital_marketing_agent.tests.test_keywords    # 42 个
-.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_creative    # 36 个
-.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_structure   # 8 个
+.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_creative    # 40 个
+.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_structure   # 11 个
 ```
 
 > 命令行入口用的是内存会话，进程退出后对话历史就没了。
@@ -425,6 +461,9 @@ client.models.generate_content(
 
 | 日期 | 类型 | 变更内容 |
 |---|---|---|
+| 2026-08-27 | feat | **生图改为 Nano Banana 三档路由**：draft / standard / premium 对应 Lite / 2 / Pro，模型 ID 用账号 `models.list()` 的 display_name 核对；移除旧的 `gemini-2.5-flash-image`；对外只暴露档位名，档位填错回退不崩；agent 指令加"先 draft 草稿再 premium 精修"的省钱纪律 |
+| 2026-08-27 | refactor | **拆分过长文件**：`creative/tools.py` 664 行拆成 tools（文案）+ visual_tools（视觉）；`keywords/data.py` 560 行拆成 schema（契约）+ mock（演示数据）+ data（取数入口）；`keywords/tools.py` 592 行**刻意不拆**（是一条工作流，无依赖收益） |
+| 2026-08-27 | refactor | 三个模块各抄一份的 `_remember` 提取为包级 `session_state.remember` |
 | 2026-08-26 | refactor | **按模块重组目录**。三个专员各成一个包（`sub_agents/<模块>/` 下 agent/tools/metrics/data 四层），根 agent 拆成只做路由的 `root_agent.py`，测试统一进 `tests/`；新增 `main.py` 启动入口（CLI 对话 / 一次性提问 / Web）与 8 个结构测试 |
 | 2026-08-26 | fix | `main.py` 启动时必须自己调 `config.load()`——ADK CLI 会替你加载 `.env`，自定义入口不会，实测报 "No API key was provided" |
 | 2026-08-26 | feat | **营销文案与视觉创意**。新增 `creative_data.py` / `creative.py` / `image_quality.py` / `creative_tools.py`（7 个工具）：RSA 多版本文案 + 全角字符严格校验、卖点六维度覆盖、视觉 prompt 构筑、三尺寸批量出图（含 1.91:1 裁剪）、素材质量诊断（客观指标 + 交模型读图）；新增 36 个测试 |

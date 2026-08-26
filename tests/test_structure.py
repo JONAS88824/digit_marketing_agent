@@ -12,7 +12,7 @@ r"""目录结构与入口的自检测试。
 import pathlib
 
 from .. import config
-from ..sub_agents.creative import tools as creative_tools
+from ..sub_agents.creative import visual_tools
 from .test_runner import run
 
 # 包根目录：tests → digital_marketing_agent
@@ -70,10 +70,10 @@ def test_each_agent_keeps_its_own_tool_count():
 
 def test_generated_images_go_to_package_root_not_into_sub_agents():
     """出图目录必须在包根，不能因为文件挪深了就写进 sub_agents/creative/ 里。"""
-    assert creative_tools.OUTPUT_DIR == PACKAGE_ROOT / "generated", (
-        f"出图目录跑偏了：{creative_tools.OUTPUT_DIR}"
+    assert visual_tools.OUTPUT_DIR == PACKAGE_ROOT / "generated", (
+        f"出图目录跑偏了：{visual_tools.OUTPUT_DIR}"
     )
-    assert "sub_agents" not in str(creative_tools.OUTPUT_DIR)
+    assert "sub_agents" not in str(visual_tools.OUTPUT_DIR)
 
 
 def test_env_file_is_read_from_package_root():
@@ -94,12 +94,16 @@ def test_expected_layout_exists():
         "sub_agents/performance/tools.py",
         "sub_agents/performance/metrics.py",
         "sub_agents/performance/data.py",
+        "session_state.py",
         "sub_agents/keywords/agent.py",
         "sub_agents/keywords/tools.py",
         "sub_agents/keywords/metrics.py",
         "sub_agents/keywords/data.py",
+        "sub_agents/keywords/schema.py",
+        "sub_agents/keywords/mock.py",
         "sub_agents/creative/agent.py",
         "sub_agents/creative/tools.py",
+        "sub_agents/creative/visual_tools.py",
         "sub_agents/creative/metrics.py",
         "sub_agents/creative/image_quality.py",
         "sub_agents/creative/data.py",
@@ -110,6 +114,40 @@ def test_expected_layout_exists():
     ]
     missing = [rel for rel in expected if not (PACKAGE_ROOT / rel).is_file()]
     assert not missing, f"缺少这些文件：{missing}"
+
+
+def test_mock_data_is_isolated_from_the_access_layer():
+    """演示数据和取数入口要分得干净：真接上 API 后 mock.py 能整个删掉。
+
+    判据：schema.py（形状契约）不许 import mock，
+    否则删 mock.py 会把契约一起带走。
+    """
+    schema_src = (PACKAGE_ROOT / "sub_agents/keywords/schema.py").read_text(encoding="utf-8")
+    assert "import mock" not in schema_src
+    assert "from .mock" not in schema_src
+
+    mock_src = (PACKAGE_ROOT / "sub_agents/keywords/mock.py").read_text(encoding="utf-8")
+    # mock 只依赖形状，不该反过来依赖取数层
+    assert "from .data" not in mock_src
+    assert "import data" not in mock_src
+
+
+def test_session_helper_is_shared_not_duplicated():
+    """会话状态的写入只该有一份实现，三个模块都用它。"""
+    for module in ("performance", "keywords", "creative"):
+        src = (PACKAGE_ROOT / f"sub_agents/{module}/tools.py").read_text(encoding="utf-8")
+        assert "def _remember(" not in src, f"{module} 又抄了一份 _remember"
+        assert "session_state import remember" in src, f"{module} 没用共用的 remember"
+
+
+def test_copy_and_visual_tools_stay_separated():
+    """文案工具不该拖进图片依赖——这是拆开这两个文件的主要目的。"""
+    copy_src = (PACKAGE_ROOT / "sub_agents/creative/tools.py").read_text(encoding="utf-8")
+    assert "PIL" not in copy_src, "文案工具里不该出现 Pillow"
+    assert "genai" not in copy_src, "文案工具里不该出现图像模型调用"
+
+    visual_src = (PACKAGE_ROOT / "sub_agents/creative/visual_tools.py").read_text(encoding="utf-8")
+    assert "PIL" in visual_src and "genai" in visual_src
 
 
 def test_main_entry_parses_arguments_without_calling_the_model():

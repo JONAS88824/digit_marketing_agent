@@ -296,8 +296,8 @@ def test_env_example_contains_no_values():
         allowed_defaults = {
             "DATA_SOURCE_MODE": "mock",
             "IMAGE_GENERATION_MODE": "mock",
-            "IMAGE_MODEL": "gemini-3.1-flash-image",
             "IMAGE_MAX_PER_CALL": "3",
+            "IMAGE_DEFAULT_TIER": "standard",
         }
         assert value == allowed_defaults.get(key, ""), f"{key} 在模板里带了值：{value}"
 
