@@ -38,11 +38,12 @@ def test_root_agent_only_routes_and_has_no_business_tools():
     from ..root_agent import root_agent
 
     assert not root_agent.tools, f"根 agent 不该挂工具，现在挂了 {len(root_agent.tools)} 个"
-    assert len(root_agent.sub_agents) == 3
+    assert len(root_agent.sub_agents) == 4
     assert {a.name for a in root_agent.sub_agents} == {
         "performance_agent",
         "keyword_agent",
         "creative_agent",
+        "strategy_agent",
     }
 
 
@@ -51,10 +52,12 @@ def test_each_sub_agent_module_exposes_its_agent():
     from ..sub_agents.creative import creative_agent
     from ..sub_agents.keywords import keyword_agent
     from ..sub_agents.performance import performance_agent
+    from ..sub_agents.strategy import strategy_agent
 
     assert performance_agent.name == "performance_agent"
     assert keyword_agent.name == "keyword_agent"
     assert creative_agent.name == "creative_agent"
+    assert strategy_agent.name == "strategy_agent"
 
 
 def test_each_agent_keeps_its_own_tool_count():
@@ -62,10 +65,32 @@ def test_each_agent_keeps_its_own_tool_count():
     from ..sub_agents.creative import creative_agent
     from ..sub_agents.keywords import keyword_agent
     from ..sub_agents.performance import performance_agent
+    from ..sub_agents.strategy import strategy_agent
 
     assert len(performance_agent.tools) == 8
     assert len(keyword_agent.tools) == 9
     assert len(creative_agent.tools) == 7
+    assert len(strategy_agent.tools) == 9
+
+
+def test_both_strategy_write_tools_require_confirmation():
+    """结构层也守一道零自动写操作：strategy 的两个写工具必须挂确认。
+
+    这条和 test_strategy 里的同名检查重复是**故意的**——它是全项目的安全底线，
+    删了任何一个模块的测试都不该让这道防线失守。
+    """
+    from google.adk.tools import FunctionTool
+
+    from ..sub_agents.strategy import strategy_agent
+
+    confirmed = {
+        t.name
+        for t in strategy_agent.tools
+        if isinstance(t, FunctionTool) and getattr(t, "_require_confirmation", False)
+    }
+    assert confirmed == {"submit_campaign_payload", "pause_campaign"}, (
+        f"需确认的写工具集合不对：{confirmed}"
+    )
 
 
 def test_generated_images_go_to_package_root_not_into_sub_agents():
@@ -107,9 +132,18 @@ def test_expected_layout_exists():
         "sub_agents/creative/metrics.py",
         "sub_agents/creative/image_quality.py",
         "sub_agents/creative/data.py",
+        "sub_agents/strategy/__init__.py",
+        "sub_agents/strategy/agent.py",
+        "sub_agents/strategy/tools.py",
+        "sub_agents/strategy/checks.py",
+        "sub_agents/strategy/payload.py",
+        "sub_agents/strategy/data.py",
+        "sub_agents/strategy/rules.py",
+        "sub_agents/strategy/schema.py",
         "tests/test_metrics.py",
         "tests/test_keywords.py",
         "tests/test_creative.py",
+        "tests/test_strategy.py",
         "tests/test_runner.py",
     ]
     missing = [rel for rel in expected if not (PACKAGE_ROOT / rel).is_file()]
@@ -133,8 +167,8 @@ def test_mock_data_is_isolated_from_the_access_layer():
 
 
 def test_session_helper_is_shared_not_duplicated():
-    """会话状态的写入只该有一份实现，三个模块都用它。"""
-    for module in ("performance", "keywords", "creative"):
+    """会话状态的写入只该有一份实现，各模块都用它。"""
+    for module in ("performance", "keywords", "creative", "strategy"):
         src = (PACKAGE_ROOT / f"sub_agents/{module}/tools.py").read_text(encoding="utf-8")
         assert "def _remember(" not in src, f"{module} 又抄了一份 _remember"
         assert "session_state import remember" in src, f"{module} 没用共用的 remember"

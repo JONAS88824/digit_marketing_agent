@@ -298,6 +298,7 @@ def test_env_example_contains_no_values():
             "IMAGE_GENERATION_MODE": "mock",
             "IMAGE_MAX_PER_CALL": "3",
             "IMAGE_DEFAULT_TIER": "standard",
+            "ADS_WRITE_MODE": "mock",
         }
         assert value == allowed_defaults.get(key, ""), f"{key} 在模板里带了值：{value}"
 

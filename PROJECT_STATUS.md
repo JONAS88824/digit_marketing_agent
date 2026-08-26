@@ -5,13 +5,13 @@
 > **本文件是本仓库的进度单一来源。** 每次 git 提交后都要更新它，
 > 具体要求见文末[文档维护要求](#文档维护要求)。
 
-**最近更新**：2026-08-26 ｜ **当前状态**：可运行（演示数据）｜ **测试**：120/120 通过
+**最近更新**：2026-08-27 ｜ **当前状态**：可运行（演示数据）｜ **测试**：190/190 通过
 
 ---
 
 ## 一句话说明
 
-两件事：
+四件事：
 
 1. **投放表现分析** —— 用户问「最近投放怎么样」，agent 拉 Google Ads 和 GA4 数据，
    算出 CTR、CPC、转化率的变化，找出哪个广告系列、从哪天开始变差。
@@ -22,10 +22,15 @@
    RSA 标题与描述并做严格字符校验，把营销主题转成图像 prompt 批量出图
    （1:1 / 1.91:1 / 9:16），再对素材做质量诊断（主体突出度、对比度、
    视觉焦点、叠字可读性、图文匹配度）。
+4. **投放策略与风控** —— 用户问「这方案能上吗、发出去安不安全」，agent 校验预算与
+   出价阀门、扫敏感词与合规红线、查正负向词自相矛盾，把方案构造成 Google Ads
+   Mutate 操作按依赖顺序原子提交，并在上线后 48 小时护航冷启动、触发熔断预警。
+   **它是全系统唯一能改动广告账号的专员，所有写操作都要用户点确认才执行。**
 
 目前跑的是**内置演示数据**，五个真实 API 的凭证和取数逻辑还没接
 （见[接入进度](#真实-api-接入进度)）；图像生成默认走本地占位图，
-真出图要显式打开开关（**按张计费**）。
+真出图要显式打开开关（**按张计费**）；投放策略与风控默认走**演练模式**，
+真落盘要显式打开 `ADS_WRITE_MODE` 且凭证齐备（**改动线上账户**）。
 
 ---
 
@@ -37,7 +42,7 @@ tools（模型能调的接口）、metrics（纯计算）、data（取数与接�
 ```
 digital_marketing_agent/
 ├── __init__.py               # 把 root_agent 转出来给 ADK 发现（关键，见下）
-├── config.py                 # 全局配置 & 凭证诊断（5 个数据源 + 三档生图路由）
+├── config.py                 # 全局配置 & 凭证诊断（5 个数据源 + 三档生图路由 + 广告写入开关与风控阀门）
 ├── root_agent.py             # 根 agent：只做意图分发与全局路由，不挂业务工具
 ├── main.py                   # 启动入口：命令行对话 / 一次性提问 / Web 服务
 ├── session_state.py          # 共用的会话状态写入（原来三个模块各抄了一份）
@@ -57,20 +62,30 @@ digital_marketing_agent/
 │   │   ├── mock.py           # 演示词库生成（接真 API 后可整个删掉）
 │   │   └── data.py           # 取数入口 + Keyword Planner / GSC / 竞品接缝
 │   │
-│   └── creative/             # 3. 营销文案与视觉创意
-│       ├── agent.py          # creative_agent
-│       ├── tools.py          # 文案工具 3 个
-│       ├── visual_tools.py   # 视觉工具 3 个（唯一会花钱的地方）
-│       ├── metrics.py        # 字符宽度 / RSA 合规校验
-│       ├── image_quality.py  # 多模态图片诊断（Pillow）
-│       └── data.py           # 卖点库 / 品牌风格 / 尺寸规范
+│   ├── creative/             # 3. 营销文案与视觉创意
+│   │   ├── agent.py          # creative_agent
+│   │   ├── tools.py          # 文案工具 3 个
+│   │   ├── visual_tools.py   # 视觉工具 3 个（会花钱的地方之一）
+│   │   ├── metrics.py        # 字符宽度 / RSA 合规校验
+│   │   ├── image_quality.py  # 多模态图片诊断（Pillow）
+│   │   └── data.py           # 卖点库 / 品牌风格 / 尺寸规范
+│   │
+│   └── strategy/             # 4. 投放策略与风控
+│       ├── agent.py          # strategy_agent（两个写工具挂人工确认）
+│       ├── tools.py          # 9 个工具（含唯一的账号写操作入口）
+│       ├── checks.py         # 纯检查：预算/出价阀门、合规扫描、逻辑矛盾、冷启动熔断
+│       ├── payload.py        # Google Ads Mutate 操作构造 + 幂等 token
+│       ├── data.py           # 写入接缝（mock/live）+ 幂等账本（唯一改账户的地方）
+│       ├── rules.py          # 敏感词表 + 出价策略表
+│       └── schema.py         # 方案形状契约 + 模型输入解析
 │
 ├── tests/                    # 统一存放测试
 │   ├── test_runner.py        # 共享运行器（不依赖 pytest）
 │   ├── test_metrics.py       # 27 个
 │   ├── test_keywords.py      # 42 个
 │   ├── test_creative.py      # 40 个
-│   └── test_structure.py     # 11 个：守住目录约定、拆分边界和入口
+│   ├── test_strategy.py      # 69 个：阀门/合规/幂等/熔断/零自动写操作
+│   └── test_structure.py     # 12 个：守住目录约定、拆分边界和入口
 │
 ├── generated/                # 出图落盘处（已 gitignore）
 ├── .env / .env.example / .gitignore / PROJECT_STATUS.md
@@ -99,12 +114,13 @@ flowchart TB
     User(["用户提问"]) --> Root
 
     subgraph Root["🤖 root_agent · 接待与路由"]
-        Route{"过去 / 未来 / 长相？"}
+        Route{"过去 / 未来 / 长相 / 能不能发？"}
     end
 
     Route -->|"已花的钱效果如何"| Perf
     Route -->|"接下来投什么词"| Kw
     Route -->|"广告长什么样"| Cr
+    Route -->|"能不能上 / 安不安全"| St
 
     subgraph Perf["📉 performance_agent · 8 工具"]
         P1["投放快照 / 环比 / 逐日趋势<br/>GA4 交叉验证 / 配置体检"]
@@ -118,17 +134,25 @@ flowchart TB
         C1["卖点原料 / RSA 文案校验<br/>视觉 prompt / 批量出图<br/>素材诊断 / 读图"]
     end
 
+    subgraph St["🛡️ strategy_agent · 9 工具"]
+        S1["预算/出价阀门 / 合规审查<br/>Payload 构造 / 幂等提交<br/>冷启动监控 / 熔断暂停"]
+    end
+
     Perf --> CalcA["🧮 metrics.py<br/>CTR · CPC · 转化率 · 环比"]
     Kw --> CalcB["🧮 keywords.py<br/>词根 · 趋势 · 成本 · 集合对比"]
     Cr --> CalcC["🧮 creative.py<br/>字符宽度 · RSA 合规"]
     Cr --> CalcD["🧮 image_quality.py<br/>对比度 · 主体 · 焦点 · 叠字区"]
+    St --> CalcE["🧮 checks.py<br/>阀门 · 敏感词 · 逻辑矛盾 · 熔断"]
 
     Kw -.->|"没有唯一答案的活"| Brain1["🧠 词根聚类 · 长尾拓展 · 负向词筛选"]
     Cr -.->|"没有唯一答案的活"| Brain2["🧠 文案创作 · 画面审美 · 图文匹配"]
+    St -.->|"没有唯一答案的活"| Brain3["🧠 夸大宣传 · 图文/落地页是否相符"]
 
     Perf --> SrcA
     Kw --> SrcB
     Cr --> SrcC
+    St -->|"只读投放数据做熔断判断"| SrcA
+    St --> Write
 
     subgraph SrcA["📊 data.py · 投放数据"]
         SwA{"mock / live"}
@@ -139,10 +163,14 @@ flowchart TB
     subgraph SrcC["🎨 creative_data.py + 图像模型"]
         SwC{"占位图 / 真出图<br/>真出图按张计费"}
     end
+    subgraph Write["✒️ strategy/data.py · 账号写入"]
+        SwD{"演练回执 / 真落盘<br/>写操作一律需人工确认"}
+    end
 
-    Config["⚙️ config.py<br/>5 个数据源 + 图像开关<br/>只报键名，不外泄凭证值"] --> SwA
+    Config["⚙️ config.py<br/>5 个数据源 + 图像开关 + 写入开关/风控阀门<br/>只报键名，不外泄凭证值"] --> SwA
     Config --> SwB
     Config --> SwC
+    Config --> SwD
     Env[(".env")] --> Config
 
     SwA -.->|"待接入"| E1["Google Ads API"]
@@ -151,6 +179,7 @@ flowchart TB
     SwB -.->|"待接入"| E4["Search Console"]
     SwB -.->|"待接入"| E5["第三方竞品情报"]
     SwC -->|"已可用"| E6["Nano Banana 三档路由<br/>Lite / 2 / Pro<br/>Imagen 系列已下线"]
+    SwD -.->|"待接入"| E7["Google Ads Mutate<br/>（凭证 + 落盘逻辑待补）"]
 ```
 
 **贯穿全局的一条红线：数字由 Python 算，判断交给模型。**
@@ -158,9 +187,9 @@ CTR 算错一位就是错误的投放决策，所以计算全部收进 `metrics.
 它们不依赖 ADK、不碰网络，因此能单独跑测试验证对错。
 模型只负责拿算好的数字去解读、聚类、取舍。
 
-**为什么拆子 agent**：三块业务加起来 24 个工具。挂在一个 agent 上，
-模型每次要在 24 个里挑，名字相近的（`get_ads_metrics` vs `plan_keywords`
-vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三套流程而臃肿。
+**为什么拆子 agent**：四块业务加起来 33 个工具。挂在一个 agent 上，
+模型每次要在 33 个里挑，名字相近的（`get_ads_metrics` vs `plan_keywords`
+vs `validate_ad_copy` vs `review_budget_and_bidding`）容易选错，instruction 也会因为要同时写四套流程而臃肿。
 拆开后每个专员只面对自己的 7-9 个工具。
 
 ---
@@ -179,18 +208,26 @@ vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三�
 | `sub_agents/*/tools.py` | 模型能调的接口 | 函数名+类型注解+docstring 就是模型的说明书 |
 | `sub_agents/*/metrics.py` | 纯计算层 | 不依赖 ADK，改动必须补测试 |
 | `sub_agents/*/data.py` | 取数与真实 API 接缝 | 真实取数只需填 `_fetch_*_live` 函数体 |
-| `session_state.py` | 共用的会话状态写入 | 三个模块共用，别再各抄一份 |
+| `session_state.py` | 共用的会话状态写入 | 四个模块共用，别再各抄一份 |
 | `sub_agents/keywords/schema.py` | 数据形状契约 | 不许 import mock，否则删 mock 会带走契约 |
 | `sub_agents/keywords/mock.py` | 演示词库生成 | 接上真 API 后可整个删掉，删除边界要保持干净 |
-| `sub_agents/creative/visual_tools.py` | 视觉工具：prompt、出图、诊断 | **唯一会花钱的文件**，成本护栏都在这里 |
+| `sub_agents/creative/visual_tools.py` | 视觉工具：prompt、出图、诊断 | **会花钱的文件之一**，成本护栏都在这里 |
 | `sub_agents/creative/image_quality.py` | 图片客观指标（Pillow） | 只用 Pillow，不引 numpy |
+| `sub_agents/strategy/checks.py` | 纯检查：阀门/合规/逻辑/熔断 | 不依赖 ADK、不碰网络，是本模块测试主战场 |
+| `sub_agents/strategy/payload.py` | Mutate 操作构造 + 幂等 token | 依赖顺序和 micros 换算错一位就是垃圾数据/十倍预算 |
+| `sub_agents/strategy/data.py` | **唯一会改动广告账号的文件** | 写操作全收在这里；缺凭证要报错不许静默降级 |
+| `sub_agents/strategy/rules.py` | 敏感词表 + 出价策略表 | 行业通用知识写死在这，账号相关阈值归 config |
+| `sub_agents/strategy/schema.py` | 方案形状契约 + 模型输入解析 | 把「填错了」和「越界了」分开报，两者话术不同 |
 | `tests/test_runner.py` | 共享测试运行器 | 不依赖 pytest，同时兼容 pytest 收集 |
 | `tests/test_structure.py` | 守住目录约定与入口 | 重构目录后第一个要跑的就是它 |
 | `.env` | 真实凭证与开关 | 已 gitignore，永不提交 |
 | `.env.example` | 可提交的配置模板 | 有测试检查它不含真值 |
 
 每个模块的四层分工：**agent** 定人格与流程，**tools** 给模型接口，
-**metrics** 算准数字，**data** 管取数。跨模块共用的只有 `config.py` 和 `session_state.py`。
+**metrics/checks** 算准数字或做确定性判断，**data** 管取数/写入。
+跨模块共用的只有 `config.py` 和 `session_state.py`。
+strategy 还刻意复用了别人的纯计算层（`creative.metrics` 数字符、
+`keywords.metrics` 查负向词），不重写一遍。
 
 ### 哪些文件拆了、哪些没拆（以及为什么）
 
@@ -248,9 +285,35 @@ vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三�
       最适合叠字的区域、叠字对比度是否达 WCAG 4.5），
       再把图存成 artifact 让模型调 load_artifacts **亲眼看**，判断吸引力与图文匹配
 
+### 投放策略与风控
+
+- [x] **9 个工具**：范围/阀门查询、预算出价审查、合规审查、Payload 构造、幂等提交、
+      冷启动监控、熔断暂停、会话上下文、风控决策存档
+- [x] **预算与出价阀门**：日预算硬上限、账户合计上限（防「拆成几个小系列」绕过）、
+      按出价策略选对阀门（tCPA 方案不查 maxCPC）、出价上下限双向卡（过高失控/过低没量），
+      每条都带 actual 和 limit，让模型说清「超了多少」
+- [x] **合规断言审查**：敏感词表分五类（绝对化用语/虚假承诺/医疗违规/侵权仿品/违禁行业），
+      抗规避归一化（全角、加空格、加点号都能抓），英文词按词边界匹配防误伤；
+      复用 creative 的字符校验和 keywords 的负向词规则，不重写
+- [x] **语义活明确交回模型**：夸大宣传、图文/落地页是否相符这类词表查不到的，
+      工具在返回里点名要求模型逐条自己读
+- [x] **逻辑自相矛盾拦截**：同词既投放又负向、账户级负向词屏蔽投放词（error），
+      跨组重复（warning）
+- [x] **Mutate 结构原子化**：预算→系列→广告组→关键词/负向词→广告素材按依赖排序，
+      负数临时 ID 让整棵树一批提交，金额统一换算成 micros，新系列一律 PAUSED 创建
+- [x] **幂等两段式**：`assemble` 出内容哈希 token，`submit` 只认 token 且重算校验，
+      方案被改过 token 对不上会拒绝；同 token 重复提交返回上次回执不重复创建
+- [x] **冷启动熔断（只判不动）**：消耗速率超预算、CTR 近零、CPC 相对基线飙升、
+      零转化烧钱四条规则，直接吃 performance 的投放数据，不新建 mock 数据源
+- [x] **零自动写操作（硬约束）**：提交与暂停两个写工具用 `FunctionTool(require_confirmation=True)`
+      包住，熔断也只产出「待批的暂停动作」，不存在任何自动改账号的路径，有两处测试守着
+- [x] **写入独立开关**：`ADS_WRITE_MODE` 与取数、出图的开关分开；默认演练回执，
+      真落盘要显式打开且凭证齐备，缺条件时抛 `AdsWriteNotReady` 而非静默降级
+- [x] **风控阀门可配置**：7 个 `RISK_*` 键在 `.env` 改，代码给保守默认值（单日 300 / 账户 3000 等）
+
 ### 架构与安全
 
-- [x] **拆子 agent**：root 路由 + performance_agent + keyword_agent + creative_agent，各管自己的工具
+- [x] **拆子 agent**：root 路由 + performance / keyword / creative / strategy 四个专员，各管自己的工具
 - [x] **凭证与配置分离**：五个数据源的凭证全在 `.env`，代码只读键名
 - [x] **配置体检不外泄凭证值**，只返回键名与是否已配置（有测试守着）
 - [x] **双重安全阀**：模式=live **且**凭证齐备才走真实 API，否则退回演示数据
@@ -266,6 +329,12 @@ vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三�
 - [ ] **实现 5 个真实取数函数**：`data.py` 两个、`keywords_data.py` 四个（GA4 那个两处共用）
 - [ ] **真出图**：把 `.env` 的 `IMAGE_GENERATION_MODE` 改成 `live`（按张计费，需已开通付费）。
       代码路径已写好并对照本账号可用模型核对过，但**没有花钱实测过一次**
+- [ ] **真落盘**：实现 `strategy/data.py` 的 `_submit_operations_live` 和 `_pause_campaign_live`
+      两个函数体（用 GoogleAdsService.mutate，partial_failure=False 整批原子提交），
+      填好 Google Ads 五项凭证，再把 `config.ADS_WRITE_IMPLEMENTED` 改成 True、
+      `.env` 的 `ADS_WRITE_MODE` 改成 `live`。代码接缝和幂等账本已就位，但**从未真的建过一个广告系列**
+- [ ] **风控真实数据**：冷启动熔断现在吃的是演示投放数据，接上真实 Google Ads 后
+      熔断判断才有意义（依赖上面的取数函数）
 - [ ] 评估测试（agent 回答质量的自动打分）
 - [ ] 部署
 
@@ -280,7 +349,7 @@ vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三�
 就绪度拆成三项分开看，因为三件事的负责人不一样：装库是环境问题，
 填凭证要去申请，写取数逻辑是写代码。糊成一个「没配好」就不知道该干哪件。
 
-| 数据源 | 依赖库 | 凭证 | 取数逻辑 | 生效模式 |
+| 数据源 | 依赖库 | 凭证 | 取数/写入逻辑 | 生效模式 |
 |---|---|---|---|---|
 | **Google Ads**（投放数据） | ✅ 已装 | ❌ 5 项待填 | ❌ 待实现 | 演示数据 |
 | **GA4**（站内数据 + 转化词） | ✅ 已装 | ❌ 2 项待填 | ❌ 待实现 | 演示数据 |
@@ -288,9 +357,10 @@ vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三�
 | **Search Console**（SEO 词库） | ✅ 已装 | ❌ 2 项待填 | ❌ 待实现 | 演示数据 |
 | **第三方竞品情报** | ✅ 无需专用库 | ❌ 2 项待填 | ❌ 待实现 | 演示数据 |
 | **图像生成**（出图） | ✅ 已装 Pillow | ✅ API key 已配 | ✅ 已写好 | **本地占位图**（开关未开） |
+| **Google Ads 写入**（建广告/暂停） | ✅ 已装 | ❌ 共用 Ads 凭证 | ❌ 落盘逻辑待实现 | **演练回执**（开关未开） |
 
-随时可以问 agent「我还缺什么凭证」，它会调 `check_data_source_config`
-报出精确的缺失项和待办清单（只报键名，不报值）。
+随时可以问 agent「我还缺什么凭证」——查数据配置调 `check_data_source_config`、
+查写入配置调 `list_strategy_scope`，都报精确的缺失项和待办清单（只报键名，不报值）。
 
 ### 各家需要什么（已核对官方文档与已安装库的源码）
 
@@ -433,7 +503,8 @@ client.models.generate_content(
 .venv\Scripts\python.exe -m digital_marketing_agent.tests.test_metrics     # 27 个
 .venv\Scripts\python.exe -m digital_marketing_agent.tests.test_keywords    # 42 个
 .venv\Scripts\python.exe -m digital_marketing_agent.tests.test_creative    # 40 个
-.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_structure   # 11 个
+.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_strategy    # 69 个
+.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_structure   # 12 个
 ```
 
 > 命令行入口用的是内存会话，进程退出后对话历史就没了。
@@ -451,7 +522,9 @@ client.models.generate_content(
 | 竞品在投什么 / 哪些词该加进负向词 / 关键词怎么分组 | keyword_agent |
 | 给跑鞋写一套搜索广告文案 / 标题超字数了帮我压一下 | creative_agent |
 | 生成三个尺寸的 banner / 这张素材行不行 / 图文搭不搭 | creative_agent |
-| 哪些词表现差、该换成什么词、再写套文案 | 依次转交三个专员，一次一个 |
+| 这套方案能提交吗 / 帮我上线 / 预算会不会跑爆 / 会不会被拒审 | strategy_agent |
+| 新广告消耗正常吗 / 暂停这个广告系列 / 出价定多少合适 | strategy_agent |
+| 哪些词表现差、该换成什么词、再写套文案、审一下能不能上 | 依次转交四个专员，一次一个 |
 
 ---
 
@@ -461,7 +534,7 @@ client.models.generate_content(
 
 | 日期 | 类型 | 变更内容 |
 |---|---|---|
-| 2026-08-27 | feat | **生图改为 Nano Banana 三档路由**：draft / standard / premium 对应 Lite / 2 / Pro，模型 ID 用账号 `models.list()` 的 display_name 核对；移除旧的 `gemini-2.5-flash-image`；对外只暴露档位名，档位填错回退不崩；agent 指令加"先 draft 草稿再 premium 精修"的省钱纪律 |
+| 2026-08-27 | feat | **新增第四个专员 strategy_agent（投放策略与风控）**：方案落盘前的守门员，也是全系统唯一改动广告账号的入口。9 个工具覆盖预算/出价阀门、合规敏感词审查（分五类 + 抗规避归一化）、逻辑自相矛盾拦截、Google Ads Mutate 结构原子化构造、幂等两段式提交、冷启动熔断监控；新增 `sub_agents/strategy/` 七个文件（agent/tools/checks/payload/data/rules/schema）+ 69 个测试。**硬约束：零自动写操作**——提交与暂停两个写工具用 `require_confirmation=True` 包住，熔断只产出待批动作；`config.py` 加 `ADS_WRITE_MODE` 独立开关与 7 个 `RISK_*` 阀门（保守默认，可在 `.env` 改），`.env`/`.env.example` 同步；root 路由改为「过去/未来/长相/能不能发」四分 |
 | 2026-08-27 | refactor | **拆分过长文件**：`creative/tools.py` 664 行拆成 tools（文案）+ visual_tools（视觉）；`keywords/data.py` 560 行拆成 schema（契约）+ mock（演示数据）+ data（取数入口）；`keywords/tools.py` 592 行**刻意不拆**（是一条工作流，无依赖收益） |
 | 2026-08-27 | refactor | 三个模块各抄一份的 `_remember` 提取为包级 `session_state.remember` |
 | 2026-08-26 | refactor | **按模块重组目录**。三个专员各成一个包（`sub_agents/<模块>/` 下 agent/tools/metrics/data 四层），根 agent 拆成只做路由的 `root_agent.py`，测试统一进 `tests/`；新增 `main.py` 启动入口（CLI 对话 / 一次性提问 / Web）与 8 个结构测试 |

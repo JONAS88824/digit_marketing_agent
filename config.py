@@ -74,6 +74,41 @@ DEFAULT_IMAGE_TIER = TIER_STANDARD
 DEFAULT_IMAGE_MAX_PER_CALL = 3
 IMAGE_HARD_CAP_PER_CALL = 6
 
+# ===== 广告账号写入的独立开关 =====
+# 又是一个独立开关，理由和 IMAGE_GENERATION_MODE 一样，而且更硬：
+# 取数是只读的，最多浪费点配额；出图是花钱但只花自己的钱；
+# **建广告是改线上账户**——预算、出价、素材都会真的生效，跑爆了是真金白银。
+# 所以默认 mock（只做演练回执），要真落盘必须显式打开。
+ADS_WRITE_MODE_ENV = "ADS_WRITE_MODE"
+
+# 真实 mutate 落盘逻辑写完了没有。同 FETCH_IMPLEMENTED 的角色：
+# 实现完 strategy/data.py 的 _submit_operations_live 之后改成 True。
+ADS_WRITE_IMPLEMENTED = False
+
+# ===== 风控阀门的默认值 =====
+# 全部可在 .env 覆盖。默认值刻意取**保守**的量级：拦错了只要改一行配置，
+# 放过了可能是几千块。键名 → (环境变量名, 默认值)。
+RISK_LIMIT_DEFAULTS = {
+    "max_daily_budget": ("RISK_MAX_DAILY_BUDGET", 300.0),
+    "max_account_daily_budget": ("RISK_MAX_ACCOUNT_DAILY_BUDGET", 3000.0),
+    "max_cpc": ("RISK_MAX_CPC", 15.0),
+    "min_cpc": ("RISK_MIN_CPC", 0.5),
+    "max_target_cpa": ("RISK_MAX_TARGET_CPA", 200.0),
+    "min_target_roas": ("RISK_MIN_TARGET_ROAS", 1.5),
+    "max_target_roas": ("RISK_MAX_TARGET_ROAS", 20.0),
+}
+
+# 每个阀门是干什么的，给模型和用户看的人话解释
+RISK_LIMIT_MEANING = {
+    "max_daily_budget": "单个广告系列的日预算上限（元）",
+    "max_account_daily_budget": "全账户日预算合计上限（元）",
+    "max_cpc": "手动出价的每次点击最高价上限（元），防止竞价失控",
+    "min_cpc": "出价下限（元），出价过低会完全没有曝光，等于白建",
+    "max_target_cpa": "目标每次转化费用上限（元），定太高等于放任超支",
+    "min_target_roas": "目标 ROAS 下限（倍数），定太低意味着接受亏损投放",
+    "max_target_roas": "目标 ROAS 上限（倍数），定太高系统会几乎不出量",
+}
+
 SOURCE_ADS = "google_ads"
 SOURCE_GA4 = "ga4"
 # 关键词规划走 Keyword Planner，它属于 Google Ads API，凭证与 SOURCE_ADS 共用，
@@ -371,6 +406,76 @@ def image_generation_status() -> dict:
             "mock 模式在本地画占位图，零成本。"
         ),
     }
+
+
+def ads_write_mode() -> str:
+    """写广告账号是 mock（只做演练）还是 live（真的建/改广告）。
+
+    只有明确写 live 才算 live。默认 mock 不是保守过头——
+    误建一个日预算填错的广告系列，代价比任何一次取数错误都大。
+    """
+    load()
+    return MODE_LIVE if _get(ADS_WRITE_MODE_ENV).lower() == MODE_LIVE else MODE_MOCK
+
+
+def risk_limits() -> dict[str, float]:
+    """当前生效的风控阀门数值。读不到或读到非法值就用默认值。
+
+    这里返回的是阈值，**不是凭证**，可以安全地给模型看——
+    模型知道上限是多少，才能在方案越界时说清「超了多少」。
+    """
+    load()
+    limits: dict[str, float] = {}
+    for key, (env_name, default) in RISK_LIMIT_DEFAULTS.items():
+        raw = _get(env_name)
+        try:
+            value = float(raw) if raw else default
+        except ValueError:
+            value = default
+        # 阈值必须是正数，配成 0 或负数等于把阀门拆了
+        limits[key] = value if value > 0 else default
+    return limits
+
+
+def ads_write_status() -> dict:
+    """广告写入的配置体检：模式、凭证齐不齐、落盘逻辑写没写、当前阀门。
+
+    和 describe() 一样的底线：**只报键名和判断，不报凭证的值**。
+    """
+    load()
+    status = source_status(SOURCE_ADS)
+    package = missing_package(SOURCE_ADS)
+    requested = ads_write_mode()
+    ready = status.configured and package is None and ADS_WRITE_IMPLEMENTED
+    return {
+        "requested_mode": requested,
+        "effective_mode": MODE_LIVE if (requested == MODE_LIVE and ready) else MODE_MOCK,
+        "credentials_configured": status.configured,
+        "missing_keys": list(status.missing_keys),
+        "library_installed": package is None,
+        "missing_package": package,
+        "write_implemented": ADS_WRITE_IMPLEMENTED,
+        "ready_for_live": ready,
+        "risk_limits": risk_limits(),
+        "risk_limit_meaning": dict(RISK_LIMIT_MEANING),
+        "risk_limit_env_keys": {
+            key: env_name for key, (env_name, _) in RISK_LIMIT_DEFAULTS.items()
+        },
+        "safety_note": (
+            "mock 模式只产出演练回执，账号里什么都不会变。"
+            "改阀门请编辑 digital_marketing_agent/.env，凭证的值永远不会显示在这里。"
+        ),
+    }
+
+
+def is_write_live() -> bool:
+    """现在是否真的会写进 Google Ads 账户。
+
+    三个条件同时满足才算：模式是 live、凭证齐备、落盘逻辑已实现。
+    任何一条不满足都退回演练——但**调用方必须把这件事说出来**，
+    不能让用户以为已经建好了。
+    """
+    return ads_write_status()["effective_mode"] == MODE_LIVE
 
 
 def describe() -> dict:
