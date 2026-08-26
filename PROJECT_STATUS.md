@@ -5,7 +5,7 @@
 > **本文件是本仓库的进度单一来源。** 每次 git 提交后都要更新它，
 > 具体要求见文末[文档维护要求](#文档维护要求)。
 
-**最近更新**：2026-08-26 ｜ **当前状态**：可运行（演示数据）｜ **测试**：105/105 通过
+**最近更新**：2026-08-26 ｜ **当前状态**：可运行（演示数据）｜ **测试**：113/113 通过
 
 ---
 
@@ -26,6 +26,65 @@
 目前跑的是**内置演示数据**，五个真实 API 的凭证和取数逻辑还没接
 （见[接入进度](#真实-api-接入进度)）；图像生成默认走本地占位图，
 真出图要显式打开开关（**按张计费**）。
+
+---
+
+## 目录结构
+
+按"一个专员一个模块"组织，每个模块自带四层：agent（人格与流程）、
+tools（模型能调的接口）、metrics（纯计算）、data（取数与接缝）。
+
+```
+digital_marketing_agent/
+├── __init__.py               # 把 root_agent 转出来给 ADK 发现（关键，见下）
+├── config.py                 # 全局配置 & 凭证诊断（5 个数据源 + 图像开关）
+├── root_agent.py             # 根 agent：只做意图分发与全局路由，不挂业务工具
+├── main.py                   # 启动入口：命令行对话 / 一次性提问 / Web 服务
+│
+├── sub_agents/
+│   ├── performance/          # 1. 投放表现分析
+│   │   ├── agent.py          # performance_agent
+│   │   ├── tools.py          # 8 个工具
+│   │   ├── metrics.py        # CTR / CPC / 转化率 / 环比
+│   │   └── data.py           # Google Ads + GA4 取数与接缝
+│   │
+│   ├── keywords/             # 2. 关键词规划
+│   │   ├── agent.py          # keyword_agent
+│   │   ├── tools.py          # 9 个工具
+│   │   ├── metrics.py        # 词根 / 趋势 / 成本预估 / 集合对比
+│   │   └── data.py           # 词库 + Keyword Planner / GSC / 竞品接缝
+│   │
+│   └── creative/             # 3. 营销文案与视觉创意
+│       ├── agent.py          # creative_agent
+│       ├── tools.py          # 7 个工具（含 ADK 内置 load_artifacts）
+│       ├── metrics.py        # 字符宽度 / RSA 合规校验
+│       ├── image_quality.py  # 多模态图片诊断（Pillow）
+│       └── data.py           # 卖点库 / 品牌风格 / 尺寸规范
+│
+├── tests/                    # 统一存放测试
+│   ├── test_runner.py        # 共享运行器（不依赖 pytest）
+│   ├── test_metrics.py       # 27 个
+│   ├── test_keywords.py      # 42 个
+│   ├── test_creative.py      # 36 个
+│   └── test_structure.py     # 8 个：守住目录约定和入口
+│
+├── generated/                # 出图落盘处（已 gitignore）
+├── .env / .env.example / .gitignore / PROJECT_STATUS.md
+```
+
+### ⚠️ ADK 发现机制：为什么 `__init__.py` 那一行不能删
+
+ADK 找 agent 的顺序是（见 `adk/cli/utils/agent_loader.py`）：
+
+1. 导入 `{包名}`，看**包上**有没有 `root_agent` 属性
+2. 导入 `{包名}.agent`，看有没有 `root_agent`
+3. 找 `{包名}/root_agent.yaml`
+
+**ADK 不认识名叫 `root_agent.py` 的文件**——它只认 `agent.py` 或包属性。
+本项目把根 agent 放在 `root_agent.py`（职责更清晰），所以完全依赖
+`__init__.py` 里的 `from .root_agent import root_agent` 把它转出来。
+删掉那一行，`adk web` 里就点不开这个 agent 了。
+`tests/test_structure.py` 有一条断言专门守着它。
 
 ---
 
@@ -104,28 +163,26 @@ vs `validate_ad_copy`）容易选错，instruction 也会因为要同时写三�
 
 ## 文件职责
 
+改动某一层时只需要看那一层，不用翻别的文件。
+
 | 文件 | 职责 | 改动时要注意 |
 |---|---|---|
-| `agent.py` | root_agent（路由）+ performance_agent + keyword_agent | ADK 只认 `root_agent` 这个变量名 |
-| `tools.py` | 投放分析的 8 个工具 | 函数名+类型注解+docstring 就是模型的说明书 |
-| `metrics.py` | 投放指标纯计算：聚合、派生、环比、好坏判定 | 不依赖 ADK，改动必须补测试 |
-| `data.py` | 投放数据源：mock/live 分流 + Ads/GA4 接缝 | 真实取数只需填两个 `_fetch_*_live` |
-| `keyword_tools.py` | 关键词规划的 9 个工具 | 只做确定性计算，语义判断要明确交回模型 |
-| `keywords.py` | 关键词纯计算：归一化、词根、趋势、成本预估、集合对比 | 成本预估带假设值，返回里必须留警告 |
-| `keywords_data.py` | 关键词数据源：演示词库 + 四个来源的接缝 | 已 560 行，再长就该拆成"数据"和"接缝"两个文件 |
-| `creative_tools.py` | 文案与视觉的 7 个工具（含 ADK 内置 load_artifacts） | 出图工具会花钱，改动要保住成本护栏 |
-| `creative.py` | 文案纯计算：字符宽度、RSA 合规、结构校验 | 字符宽度是全项目最不能错的一处 |
-| `image_quality.py` | 图片纯计算：对比度、主体、视觉焦点、叠字区 | 只用 Pillow，不引 numpy |
-| `creative_data.py` | 卖点原料库、品牌风格预设、广告尺寸规范 | 卖点必须是事实，不能是形容词 |
+| `__init__.py` | 把 `root_agent` 转出来给 ADK 发现 | **那一行不能删**，见上方 ADK 发现机制 |
+| `root_agent.py` | 只做意图分发与路由 | 不该挂任何业务工具，有测试守着 |
+| `main.py` | 启动入口（CLI / 一次性提问 / Web） | 必须自己调 `config.load()` 加载 `.env`，ADK CLI 才会替你做 |
 | `config.py` | 读 `.env`，回答「配了没有」，产出待办清单 | **绝不能返回凭证的值**，有测试守着 |
-| `test_metrics.py` | 投放分析层 27 个测试 | 改了计算或配置逻辑就要跑 |
-| `test_keywords.py` | 关键词层 42 个测试 | 同上 |
-| `test_creative.py` | 文案与视觉层 36 个测试 | 同上 |
-| `test_runner.py` | 共享的极简测试运行器 | 不依赖 pytest，同时兼容 pytest 收集 |
-| `.env` | 真实凭证与数据源开关 | 已 gitignore，永不提交 |
-| `.env.example` | 可提交的配置模板，值全部为空 | 有测试检查它不含真值 |
+| `sub_agents/*/agent.py` | 该专员的人格、流程、汇报纪律、挂哪些工具 | 只定义 agent，不写业务逻辑 |
+| `sub_agents/*/tools.py` | 模型能调的接口 | 函数名+类型注解+docstring 就是模型的说明书 |
+| `sub_agents/*/metrics.py` | 纯计算层 | 不依赖 ADK，改动必须补测试 |
+| `sub_agents/*/data.py` | 取数与真实 API 接缝 | 真实取数只需填 `_fetch_*_live` 函数体 |
+| `sub_agents/creative/image_quality.py` | 图片客观指标（Pillow） | 只用 Pillow，不引 numpy |
+| `tests/test_runner.py` | 共享测试运行器 | 不依赖 pytest，同时兼容 pytest 收集 |
+| `tests/test_structure.py` | 守住目录约定与入口 | 重构目录后第一个要跑的就是它 |
+| `.env` | 真实凭证与开关 | 已 gitignore，永不提交 |
+| `.env.example` | 可提交的配置模板 | 有测试检查它不含真值 |
 
----
+每个模块的四层分工：**agent** 定人格与流程，**tools** 给模型接口，
+**metrics** 算准数字，**data** 管取数。跨模块共用的只有 `config.py`。
 
 ## 已完成
 
@@ -320,18 +377,31 @@ client.models.generate_content(
 
 ## 怎么运行
 
-```bash
-# 启动 web 界面（在工作区根目录执行）
-cd D:\Projects\adk-workspace
-.venv\Scripts\activate
-adk web
-# 然后在左上角下拉里选 digital_marketing_agent
+全部命令在工作区根目录 `D:\Projects\adk-workspace` 下执行。
 
-# 跑自检测试（不联网、不消耗 API 配额）
-.venv\Scripts\python.exe -m digital_marketing_agent.test_metrics    # 27 个
-.venv\Scripts\python.exe -m digital_marketing_agent.test_keywords   # 42 个
-.venv\Scripts\python.exe -m digital_marketing_agent.test_creative   # 36 个
+```bash
+# ---- 三种启动方式 ----
+# 1) 网页界面（原来的方式，仍然可用）
+.venv\Scripts\activate && adk web        # 左上角下拉里选 digital_marketing_agent
+
+# 2) 命令行对话（无需浏览器，适合服务器 / SSH）
+.venv\Scripts\python.exe -m digital_marketing_agent.main
+
+# 3) 一次性提问，问完退出（适合挂定时任务跑日报）
+.venv\Scripts\python.exe -m digital_marketing_agent.main --ask "最近一周投放怎么样"
+
+# 也可以用 main.py 代起网页服务，省得记参数
+.venv\Scripts\python.exe -m digital_marketing_agent.main --web --port 8000
+
+# ---- 跑自检测试（不联网、不消耗 API 配额）----
+.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_metrics     # 27 个
+.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_keywords    # 42 个
+.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_creative    # 36 个
+.venv\Scripts\python.exe -m digital_marketing_agent.tests.test_structure   # 8 个
 ```
+
+> 命令行入口用的是内存会话，进程退出后对话历史就没了。
+> 学习阶段够用；要持久化把 `InMemorySessionService` 换成数据库版即可，agent 不用改。
 
 生成的图片落在 `generated/`（已 gitignore）。mock 模式下是**占位图，不能投放**。
 
@@ -355,6 +425,8 @@ adk web
 
 | 日期 | 类型 | 变更内容 |
 |---|---|---|
+| 2026-08-26 | refactor | **按模块重组目录**。三个专员各成一个包（`sub_agents/<模块>/` 下 agent/tools/metrics/data 四层），根 agent 拆成只做路由的 `root_agent.py`，测试统一进 `tests/`；新增 `main.py` 启动入口（CLI 对话 / 一次性提问 / Web）与 8 个结构测试 |
+| 2026-08-26 | fix | `main.py` 启动时必须自己调 `config.load()`——ADK CLI 会替你加载 `.env`，自定义入口不会，实测报 "No API key was provided" |
 | 2026-08-26 | feat | **营销文案与视觉创意**。新增 `creative_data.py` / `creative.py` / `image_quality.py` / `creative_tools.py`（7 个工具）：RSA 多版本文案 + 全角字符严格校验、卖点六维度覆盖、视觉 prompt 构筑、三尺寸批量出图（含 1.91:1 裁剪）、素材质量诊断（客观指标 + 交模型读图）；新增 36 个测试 |
 | 2026-08-26 | refactor | 架构加入第三个专员 `creative_agent`，root 路由改为「过去/未来/长相」三分 |
 | 2026-08-26 | fix | 实测本账号 `models.list()` 后确认 **Imagen 系列已在 Gemini API 全部下线**，改用 `gemini-3.1-flash-image` 走 `generate_content` + `image_config`；负向 prompt 已失效，排除项改写进正向 prompt |

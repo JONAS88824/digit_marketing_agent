@@ -345,7 +345,7 @@ class KeywordSourceNotReady(RuntimeError):
 
 def _blocker(source: str) -> str:
     """拼出"这个源现在为什么不能用 + 还差几步"的说明。"""
-    from . import config
+    from ... import config
 
     steps = config.remaining_work(source)
     return f"{source} 现在还取不到真实数据。待办：" + "；".join(
@@ -354,7 +354,7 @@ def _blocker(source: str) -> str:
 
 
 def _is_live(source: str) -> bool:
-    from . import config
+    from ... import config
 
     return config.is_live(source) and config.FETCH_IMPLEMENTED[source]
 
@@ -365,7 +365,7 @@ def fetch_keyword_ideas(
     intents: Sequence[str] | None = None,
 ) -> tuple[KeywordIdea, ...]:
     """按行业 / 产品筛出关键词创意及其搜索量、CPC、竞争度与 12 个月趋势。"""
-    from . import config
+    from ... import config
 
     if _is_live(config.SOURCE_KEYWORD_PLANNER):
         return _fetch_keyword_ideas_live(industry, product, intents)
@@ -415,14 +415,14 @@ def _fetch_keyword_ideas_live(
 
     实现完成后把 config.py 的 FETCH_IMPLEMENTED[SOURCE_KEYWORD_PLANNER] 改成 True。
     """
-    from . import config
+    from ... import config
 
     raise KeywordSourceNotReady(_blocker(config.SOURCE_KEYWORD_PLANNER))
 
 
 def fetch_competitor_keywords(competitor: str | None = None) -> tuple[CompetitorKeyword, ...]:
     """取竞品在投的关键词。不指定竞品则返回全部竞品。"""
-    from . import config
+    from ... import config
 
     if _is_live(config.SOURCE_COMPETITOR):
         return _fetch_competitor_keywords_live(competitor)
@@ -455,14 +455,14 @@ def _fetch_competitor_keywords_live(competitor: str | None) -> tuple[CompetitorK
        只能用来判断方向（它在抢哪类词），不能当精确数字用。
     2. 这类接口普遍按调用次数计费，别在循环里逐词查。
     """
-    from . import config
+    from ... import config
 
     raise KeywordSourceNotReady(_blocker(config.SOURCE_COMPETITOR))
 
 
 def fetch_seo_queries(limit: int = 200) -> tuple[SeoQuery, ...]:
     """取 Search Console 的自然搜索词，按点击量从高到低。"""
-    from . import config
+    from ... import config
 
     if _is_live(config.SOURCE_SEARCH_CONSOLE):
         return _fetch_seo_queries_live(limit)
@@ -508,14 +508,14 @@ def _fetch_seo_queries_live(limit: int) -> tuple[SeoQuery, ...]:
 
     实现完成后把 config.py 的 FETCH_IMPLEMENTED[SOURCE_SEARCH_CONSOLE] 改成 True。
     """
-    from . import config
+    from ... import config
 
     raise KeywordSourceNotReady(_blocker(config.SOURCE_SEARCH_CONSOLE))
 
 
 def fetch_converting_terms(limit: int = 200) -> tuple[ConvertingSearchTerm, ...]:
     """取 GA4 里实际带来转化的搜索词，按转化数从高到低。"""
-    from . import config
+    from ... import config
 
     if _is_live(config.SOURCE_GA4) and config.FETCH_IMPLEMENTED[config.SOURCE_GA4]:
         return _fetch_converting_terms_live(limit)
@@ -555,6 +555,6 @@ def _fetch_converting_terms_live(limit: int) -> tuple[ConvertingSearchTerm, ...]
 
     实现完成后把 config.py 的 FETCH_IMPLEMENTED[SOURCE_GA4] 改成 True。
     """
-    from . import config
+    from ... import config
 
     raise KeywordSourceNotReady(_blocker(config.SOURCE_GA4))

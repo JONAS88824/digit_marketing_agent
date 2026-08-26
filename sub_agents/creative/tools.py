@@ -17,10 +17,15 @@ import pathlib
 
 from google.adk.tools import ToolContext
 
-from . import config, creative, creative_data, image_quality
+from ... import config
+from . import data as creative_data
+from . import image_quality
+from . import metrics as creative
 
-# 生成的图片存在这里（已 gitignore，不进版本库）
-OUTPUT_DIR = pathlib.Path(__file__).parent / "generated"
+# 生成的图片存在这里（已 gitignore，不进版本库）。
+# parents[2] 是 agent 包根目录：creative → sub_agents → digital_marketing_agent。
+# 重构目录时这一行最容易被漏掉，有测试盯着它落在包根的 generated/ 下。
+OUTPUT_DIR = pathlib.Path(__file__).parents[2] / "generated"
 
 # 一次最多返回多少条卖点，避免塞爆上下文
 MAX_USPS_RETURNED = 30

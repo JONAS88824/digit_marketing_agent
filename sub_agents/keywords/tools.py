@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from google.adk.tools import ToolContext
 
-from . import keywords, keywords_data
+from . import data as keywords_data
+from . import metrics as keywords
 
 # 单次返回给模型的关键词上限。太多会挤爆上下文，也没人读得完。
 MAX_KEYWORDS_RETURNED = 60

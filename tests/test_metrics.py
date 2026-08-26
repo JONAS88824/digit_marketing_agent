@@ -12,7 +12,8 @@ import os
 import pathlib
 from datetime import date, timedelta
 
-from . import config, data, metrics, tools
+from .. import config
+from ..sub_agents.performance import data, metrics, tools
 from .test_runner import run
 
 
@@ -285,7 +286,7 @@ def test_list_data_sources_reports_mock_mode():
 
 def test_env_example_contains_no_values():
     """.env.example 会被提交到 git，里面必须一个值都没有。"""
-    template = pathlib.Path(__file__).parent / ".env.example"
+    template = pathlib.Path(__file__).parents[1] / ".env.example"
     assert template.exists(), "缺少 .env.example 模板"
     for line in template.read_text(encoding="utf-8").splitlines():
         if "=" not in line or line.lstrip().startswith("#"):

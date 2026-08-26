@@ -16,7 +16,8 @@ from datetime import date, timedelta
 
 from google.adk.tools import ToolContext
 
-from . import config, data, metrics
+from ... import config
+from . import data, metrics
 
 # 单次查询允许的最大天数，防止模型一次拉光全部数据
 MAX_DAYS = data.HISTORY_DAYS

@@ -9,7 +9,10 @@ r"""关键词规划层的自检测试（不需要 pytest、不需要联网）。
 这些错了，模型再聪明也会给出错的方案。
 """
 
-from . import config, keyword_tools, keywords, keywords_data
+from .. import config
+from ..sub_agents.keywords import data as keywords_data
+from ..sub_agents.keywords import metrics as keywords
+from ..sub_agents.keywords import tools as keyword_tools
 from .test_runner import run
 
 

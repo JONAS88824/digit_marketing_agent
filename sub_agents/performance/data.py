@@ -17,7 +17,7 @@ import random
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from . import config
+from ... import config
 
 # 生成多少天的历史数据
 HISTORY_DAYS = 90
