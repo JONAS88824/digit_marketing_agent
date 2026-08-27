@@ -16,6 +16,7 @@ ADK 找 agent 的第一条规则是"导入这个包，看它有没有 root_agent
 """
 
 from google.adk.agents.llm_agent import Agent
+from google.genai import types
 
 from .sub_agents.creative import creative_agent
 from .sub_agents.keywords import keyword_agent
@@ -68,4 +69,5 @@ root_agent = Agent(
 
 回答用简洁的中文。""",
     sub_agents=[performance_agent, keyword_agent, creative_agent, strategy_agent],
+    generate_content_config=types.GenerateContentConfig(temperature=0.2),
 )

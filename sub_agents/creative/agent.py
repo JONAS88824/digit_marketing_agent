@@ -7,6 +7,7 @@
 
 from google.adk.agents.llm_agent import Agent
 from google.adk.tools.load_artifacts_tool import load_artifacts_tool
+from google.genai import types
 
 from . import tools, visual_tools
 
@@ -108,4 +109,5 @@ Google Ads 标题额度 30 个单位、描述 90 个单位，而**中文全角�
         # ADK 内置：让模型能把 artifact 里的图片真的读进来看
         load_artifacts_tool,
     ],
+    generate_content_config=types.GenerateContentConfig(temperature=1.0),
 )

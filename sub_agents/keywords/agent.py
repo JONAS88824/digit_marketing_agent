@@ -5,6 +5,7 @@
 """
 
 from google.adk.agents.llm_agent import Agent
+from google.genai import types
 
 from . import tools
 
@@ -83,4 +84,5 @@ keyword_agent = Agent(
         tools.record_keyword_plan,
         tools.get_keyword_context,
     ],
+    generate_content_config=types.GenerateContentConfig(temperature=0.4),
 )

@@ -5,6 +5,7 @@
 """
 
 from google.adk.agents.llm_agent import Agent
+from google.genai import types
 
 from . import tools
 
@@ -69,4 +70,5 @@ performance_agent = Agent(
         tools.get_daily_trend,
         tools.get_current_context,
     ],
+    generate_content_config=types.GenerateContentConfig(temperature=0.2),
 )

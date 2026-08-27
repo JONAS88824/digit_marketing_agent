@@ -5,7 +5,7 @@
 > **本文件是本仓库的进度单一来源。** 每次 git 提交后都要更新它，
 > 具体要求见文末[文档维护要求](#文档维护要求)。
 
-**最近更新**：2026-08-27 ｜ **当前状态**：可运行（演示数据）｜ **测试**：190/190 通过
+**最近更新**：2026-08-28 ｜ **当前状态**：可运行（演示数据）｜ **测试**：190/190 通过
 
 ---
 
@@ -314,6 +314,7 @@ strategy 还刻意复用了别人的纯计算层（`creative.metrics` 数字符�
 ### 架构与安全
 
 - [x] **拆子 agent**：root 路由 + performance / keyword / creative / strategy 四个专员，各管自己的工具
+- [x] **按职责分层设定 temperature**：风控 0.1 / 路由 0.2 / 分析 0.2 / 关键词 0.4 / 创意 1.0，算账判断类低温求稳、创作类高温求多样；数字全由 Python 算，调高创意温度不影响准确性
 - [x] **凭证与配置分离**：五个数据源的凭证全在 `.env`，代码只读键名
 - [x] **配置体检不外泄凭证值**，只返回键名与是否已配置（有测试守着）
 - [x] **双重安全阀**：模式=live **且**凭证齐备才走真实 API，否则退回演示数据
@@ -534,6 +535,7 @@ client.models.generate_content(
 
 | 日期 | 类型 | 变更内容 |
 |---|---|---|
+| 2026-08-28 | feat | **按职责分层设定 agent temperature**：root 路由 0.2、performance 分析 0.2、keyword 关键词 0.4、creative 创意 1.0、strategy 风控 0.1，通过 `generate_content_config=types.GenerateContentConfig(temperature=...)` 注入。原则「算账/判断/风控低温求稳、创作高温求多样」，契合"数字由 Python 算、解读交给模型"——温度调高不影响工具算出的数字 |
 | 2026-08-27 | feat | **新增第四个专员 strategy_agent（投放策略与风控）**：方案落盘前的守门员，也是全系统唯一改动广告账号的入口。9 个工具覆盖预算/出价阀门、合规敏感词审查（分五类 + 抗规避归一化）、逻辑自相矛盾拦截、Google Ads Mutate 结构原子化构造、幂等两段式提交、冷启动熔断监控；新增 `sub_agents/strategy/` 七个文件（agent/tools/checks/payload/data/rules/schema）+ 69 个测试。**硬约束：零自动写操作**——提交与暂停两个写工具用 `require_confirmation=True` 包住，熔断只产出待批动作；`config.py` 加 `ADS_WRITE_MODE` 独立开关与 7 个 `RISK_*` 阀门（保守默认，可在 `.env` 改），`.env`/`.env.example` 同步；root 路由改为「过去/未来/长相/能不能发」四分 |
 | 2026-08-27 | refactor | **拆分过长文件**：`creative/tools.py` 664 行拆成 tools（文案）+ visual_tools（视觉）；`keywords/data.py` 560 行拆成 schema（契约）+ mock（演示数据）+ data（取数入口）；`keywords/tools.py` 592 行**刻意不拆**（是一条工作流，无依赖收益） |
 | 2026-08-27 | refactor | 三个模块各抄一份的 `_remember` 提取为包级 `session_state.remember` |

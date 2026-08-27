@@ -14,6 +14,7 @@ r"""投放策略与风控专员。
 
 from google.adk.agents.llm_agent import Agent
 from google.adk.tools import FunctionTool
+from google.genai import types
 
 from . import tools
 
@@ -105,4 +106,5 @@ monitor_new_campaign 返回 `circuit_breaker_tripped=true` 时：
         tools.get_strategy_context,
         tools.record_risk_decision,
     ],
+    generate_content_config=types.GenerateContentConfig(temperature=0.1),
 )
