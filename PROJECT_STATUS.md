@@ -5,7 +5,7 @@
 > **本文件是本仓库的进度单一来源。** 每次 git 提交后都要更新它，
 > 具体要求见文末[文档维护要求](#文档维护要求)。
 
-**最近更新**：2026-08-28 ｜ **当前状态**：可运行（演示数据）｜ **测试**：190/190 通过
+**最近更新**：2026-08-28 ｜ **当前状态**：可运行（演示数据）· 专属 Web UI 已上线 ｜ **测试**：190/190 通过
 
 ---
 
@@ -86,6 +86,11 @@ digital_marketing_agent/
 │   ├── test_creative.py      # 40 个
 │   ├── test_strategy.py      # 69 个：阀门/合规/幂等/熔断/零自动写操作
 │   └── test_structure.py     # 12 个：守住目录约定、拆分边界和入口
+│
+├── web/                      # 专属 Web UI「投放作战室」
+│   ├── server.py             # FastAPI 后端：ADK Runner → SSE（详见 web/README.md）
+│   ├── README.md             # 接口清单、运行方式、安全边界
+│   └── frontend/             # Next.js + Tailwind 前端（工具返回值渲染成结构化卡片）
 │
 ├── generated/                # 出图落盘处（已 gitignore）
 ├── .env / .env.example / .gitignore / PROJECT_STATUS.md
@@ -220,6 +225,8 @@ vs `validate_ad_copy` vs `review_budget_and_bidding`）容易选错，instructio
 | `sub_agents/strategy/schema.py` | 方案形状契约 + 模型输入解析 | 把「填错了」和「越界了」分开报，两者话术不同 |
 | `tests/test_runner.py` | 共享测试运行器 | 不依赖 pytest，同时兼容 pytest 收集 |
 | `tests/test_structure.py` | 守住目录约定与入口 | 重构目录后第一个要跑的就是它 |
+| `web/server.py` | FastAPI 后端：Runner 事件翻译成 SSE、人工确认回传、配置中心 | 凭证只写不读；确认结果以 function_response 形式喂回 runner（对照 ADK 源码核实过） |
+| `web/frontend/` | Next.js + Tailwind 前端，工具返回值→结构化卡片 | 卡片渲染器按工具返回的真实字段写；新数据源加进 config.py 后配置中心自动出现 |
 | `.env` | 真实凭证与开关 | 已 gitignore，永不提交 |
 | `.env.example` | 可提交的配置模板 | 有测试检查它不含真值 |
 
@@ -487,7 +494,7 @@ client.models.generate_content(
 全部命令在工作区根目录 `D:\Projects\adk-workspace` 下执行。
 
 ```bash
-# ---- 三种启动方式 ----
+# ---- 四种启动方式 ----
 # 1) 网页界面（原来的方式，仍然可用）
 .venv\Scripts\activate && adk web        # 左上角下拉里选 digital_marketing_agent
 
@@ -496,6 +503,11 @@ client.models.generate_content(
 
 # 3) 一次性提问，问完退出（适合挂定时任务跑日报）
 .venv\Scripts\python.exe -m digital_marketing_agent.main --ask "最近一周投放怎么样"
+
+# 4) 专属 Web UI「投放作战室」——两个终端，都在工作区根目录
+.venv\Scripts\python.exe -m digital_marketing_agent.web.server    # 终端1：后端 :8001
+cd digital_marketing_agent\web\frontend && npm run dev            # 终端2：前端 :3000
+# 浏览器打开 http://localhost:3000 （首次先 npm install）
 
 # 也可以用 main.py 代起网页服务，省得记参数
 .venv\Scripts\python.exe -m digital_marketing_agent.main --web --port 8000
@@ -535,6 +547,7 @@ client.models.generate_content(
 
 | 日期 | 类型 | 变更内容 |
 |---|---|---|
+| 2026-08-28 | feat | **专属 Web UI「投放作战室」**：新增 `web/server.py`（FastAPI 后端，进程内跑 ADK Runner，事件流翻译成 SSE）+ `web/frontend/`（Next.js + Tailwind）。核心链路全部实测跑通：①对话流（text/tool_call/tool_result/transfer 四类事件→结构化卡片：KPI 行、趋势图、词表、RSA 校验、图片廊、审查清单）；②**人工确认闭环**——写工具被 `require_confirmation` 拦截→前端确认卡→`/api/chat/confirm` 把确认结果以 function_response 形式喂回 runner→工具执行出回执（用 pause_campaign 全链路实测）；③配置中心——schema 由 config.py 生成（数据驱动，加数据源前端零改动），支持 provider/模型切换（Gemini 系即时生效）、测连通、写 .env 热更新；④三盏安全状态灯常驻顶栏；⑤图片/文件上传（图片走 Gemini 多模态）。agent 本体零改动，190 个测试全过。设计稿在 adk-workspace/web_ui_design/mockup.html |
 | 2026-08-28 | feat | **按职责分层设定 agent temperature**：root 路由 0.2、performance 分析 0.2、keyword 关键词 0.4、creative 创意 1.0、strategy 风控 0.1，通过 `generate_content_config=types.GenerateContentConfig(temperature=...)` 注入。原则「算账/判断/风控低温求稳、创作高温求多样」，契合"数字由 Python 算、解读交给模型"——温度调高不影响工具算出的数字 |
 | 2026-08-27 | feat | **新增第四个专员 strategy_agent（投放策略与风控）**：方案落盘前的守门员，也是全系统唯一改动广告账号的入口。9 个工具覆盖预算/出价阀门、合规敏感词审查（分五类 + 抗规避归一化）、逻辑自相矛盾拦截、Google Ads Mutate 结构原子化构造、幂等两段式提交、冷启动熔断监控；新增 `sub_agents/strategy/` 七个文件（agent/tools/checks/payload/data/rules/schema）+ 69 个测试。**硬约束：零自动写操作**——提交与暂停两个写工具用 `require_confirmation=True` 包住，熔断只产出待批动作；`config.py` 加 `ADS_WRITE_MODE` 独立开关与 7 个 `RISK_*` 阀门（保守默认，可在 `.env` 改），`.env`/`.env.example` 同步；root 路由改为「过去/未来/长相/能不能发」四分 |
 | 2026-08-27 | refactor | **拆分过长文件**：`creative/tools.py` 664 行拆成 tools（文案）+ visual_tools（视觉）；`keywords/data.py` 560 行拆成 schema（契约）+ mock（演示数据）+ data（取数入口）；`keywords/tools.py` 592 行**刻意不拆**（是一条工作流，无依赖收益） |

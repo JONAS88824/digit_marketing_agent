@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* ============ 设计令牌：与设计稿 mockup.html 同源 ============ */
+:root {
+  --page: #f0f0ec;
+  --surface: #fcfcfb;
+  --surface-2: #f4f4f1;
+  --surface-3: #ecebe6;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --hairline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --accent: #2a78d6;
+  --accent-strong: #1c5cab;
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warn: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #232322;
+    --surface-3: #2c2c2a;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --hairline: #2c2c2a;
+    --baseline: #383835;
+    --accent: #3987e5;
+    --accent-strong: #86b6ef;
+    --good: #0ca30c;
+    --good-text: #0ca30c;
+    --warn: #fab219;
+    --serious: #ec835a;
+    --critical: #e66767;
+  }
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface-2);
+  --color-surface3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-hairline: var(--hairline);
+  --color-baseline: var(--baseline);
+  --color-accent: var(--accent);
+  --color-accentstrong: var(--accent-strong);
+  --color-good: var(--good);
+  --color-goodtext: var(--good-text);
+  --color-warn: var(--warn);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --font-sans: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+}
+
+/* 整页永不滚动：滚动只发生在各栏内部（用户明确要求的布局约束） */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+}
+
+/* 数字列对齐 */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 滚动条细化 */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--baseline);
+}
