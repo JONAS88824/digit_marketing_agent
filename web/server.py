@@ -79,6 +79,27 @@ async def create_session(_req: CreateSessionRequest | None = None) -> dict[str, 
     return {"session_id": session.id}
 
 
+def _session_title(session: Any) -> str:
+    """会话的显示标题：第一条用户消息的前 24 个字。
+
+    确认操作也是以 user 消息的形式进会话的（function_response，没有文本），
+    这里只认真正带文本的消息，所以标题不会被确认事件污染。
+    """
+    for event in getattr(session, "events", None) or []:
+        if not event.author or event.author != "user":
+            continue
+        if not event.content or not event.content.parts:
+            continue
+        text = "".join(
+            part.text
+            for part in event.content.parts
+            if getattr(part, "text", None)
+        ).strip()
+        if text:
+            return text.replace("\n", " ")[:24]
+    return "新对话"
+
+
 @app.get("/api/sessions")
 async def list_sessions() -> dict[str, Any]:
     response = await _session_service.list_sessions(
@@ -87,7 +108,11 @@ async def list_sessions() -> dict[str, Any]:
     # InMemorySessionService 返回 ListSessionsResponse，会话列表在 .sessions 里
     found = getattr(response, "sessions", response)
     items = [
-        {"session_id": s.id, "updated_at": getattr(s, "last_update_timestamp", None)}
+        {
+            "session_id": s.id,
+            "title": _session_title(s),
+            "updated_at": getattr(s, "last_update_timestamp", None),
+        }
         for s in found
     ]
     # 新的排前面

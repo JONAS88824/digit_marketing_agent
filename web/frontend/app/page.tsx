@@ -206,14 +206,16 @@ export default function Page() {
   return (
     <div className="flex h-dvh flex-col">
       <TopBar status={status} />
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[236px_minmax(0,1fr)] xl:grid-cols-[236px_minmax(0,1fr)_300px]">
+      {/* 网格行封顶 minmax(0,1fr)：防止某栏内容过高把整行撑出视口，
+          顶掉中央栏底部的输入框（三栏都必须在栏内滚动） */}
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] grid-cols-1 md:grid-cols-[236px_minmax(0,1fr)] xl:grid-cols-[236px_minmax(0,1fr)_300px]">
         <div className="hidden md:block">
           <Sidebar
             sessions={sessions}
             activeSessionId={sessionId}
             onNewSession={newSession}
             onSelectSession={selectSession}
-            onAsk={(q) => send(q)}
+            onPickQuestion={(q) => setInput(q)}
           />
         </div>
         <main className="flex min-w-0 flex-col">

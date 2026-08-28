@@ -34,16 +34,16 @@ export function Sidebar({
   activeSessionId,
   onNewSession,
   onSelectSession,
-  onAsk,
+  onPickQuestion,
 }: {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
-  onAsk: (question: string) => void;
+  onPickQuestion: (question: string) => void;
 }) {
   return (
-    <aside className="flex flex-col gap-4 overflow-y-auto border-r border-hairline bg-surface p-3">
+    <aside className="flex h-full flex-col gap-4 overflow-y-auto border-r border-hairline bg-surface p-3">
       <button
         type="button"
         onClick={onNewSession}
@@ -70,7 +70,7 @@ export function Sidebar({
                   s.session_id === activeSessionId ? "bg-surface3 font-semibold text-ink" : "text-ink2 hover:bg-surface2"
                 }`}
               >
-                <span className="truncate">{s.session_id.slice(0, 8)}</span>
+                <span className="truncate">{s.title || "新对话"}</span>
                 <span className="shrink-0 font-mono text-[10.5px] text-muted">
                   {s.updated_at ? new Date(s.updated_at * 1000).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : ""}
                 </span>
@@ -90,9 +90,9 @@ export function Sidebar({
             <button
               key={sp.name}
               type="button"
-              onClick={() => onAsk(sp.question)}
+              onClick={() => onPickQuestion(sp.question)}
               className="grid grid-cols-[18px_1fr] items-start gap-2 rounded-md px-2.5 py-2 text-left hover:bg-surface2"
-              title={`点击发送「${sp.question}」`}
+              title={`点击把「${sp.question}」填进输入框，可以修改后再发送`}
             >
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" className="mt-0.5">
                 <path

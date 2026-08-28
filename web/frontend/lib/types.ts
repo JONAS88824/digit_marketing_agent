@@ -40,7 +40,7 @@ export type PendingAttachment = {
   data: string; // base64，不带 data:xxx;base64, 前缀
 };
 
-export type SessionInfo = { session_id: string; updated_at: number | null };
+export type SessionInfo = { session_id: string; title?: string; updated_at: number | null };
 
 export type SourceStatusInfo = {
   credentials_configured: boolean;

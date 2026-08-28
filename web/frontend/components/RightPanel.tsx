@@ -35,7 +35,7 @@ export function RightPanel({
   if (plan.monitorSeverity) planRows.push({ label: "冷启动", value: plan.monitorSeverity });
 
   return (
-    <aside className="flex flex-col gap-4 overflow-y-auto border-l border-hairline bg-surface p-3.5">
+    <aside className="flex h-full flex-col gap-4 overflow-y-auto border-l border-hairline bg-surface p-3.5">
       <div className="overflow-hidden rounded-lg border border-hairline">
         <div className="flex items-center justify-between border-b border-hairline px-3 py-2 text-[12.5px] font-bold">
           当前方案
