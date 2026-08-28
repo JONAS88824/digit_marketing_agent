@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -28,10 +29,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
-from google.adk.artifacts import InMemoryArtifactService
+from google.adk.artifacts import FileArtifactService
 from google.adk.flows.llm_flows.functions import REQUEST_CONFIRMATION_FUNCTION_CALL_NAME
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions import DatabaseSessionService
 from google.genai import types
 
 from .. import config
@@ -55,8 +56,17 @@ app.add_middleware(
 # 否则第一次调模型直接报 "No API key was provided"（main.py 踩过的同一个坑）。
 config.load()
 
-_session_service = InMemorySessionService()
-_artifact_service = InMemoryArtifactService()
+# 会话与产物的持久化目录（已 gitignore）：
+# - 会话历史进 SQLite（DatabaseSessionService），重启后端不丢
+# - 图片产物按文件存（FileArtifactService）
+# 两者都是 ADK 自带的换装升级，agent 本体零改动。
+_DATA_DIR = Path(__file__).parent / ".data"
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+_session_service = DatabaseSessionService(
+    db_url=f"sqlite+aiosqlite:///{(_DATA_DIR / 'sessions.db').as_posix()}"
+)
+_artifact_service = FileArtifactService(root_dir=_DATA_DIR / "artifacts")
 _runner = Runner(
     app_name=APP_NAME,
     agent=root_agent,
@@ -100,24 +110,42 @@ def _session_title(session: Any) -> str:
     return "新对话"
 
 
+def _last_event_time(session: Any) -> float:
+    """会话最后活动时间：最后一个事件的 timestamp（秒）。
+
+    DatabaseSessionService 的 list_sessions 结果不带时间戳也不带事件，
+    所以从完整会话的事件里取。
+    """
+    events = getattr(session, "events", None) or []
+    for event in reversed(events):
+        ts = getattr(event, "timestamp", None)
+        if ts:
+            return float(ts)
+    return 0.0
+
+
 @app.get("/api/sessions")
 async def list_sessions() -> dict[str, Any]:
     response = await _session_service.list_sessions(
         app_name=APP_NAME, user_id=DEFAULT_USER_ID
     )
-    # InMemorySessionService 返回 ListSessionsResponse，会话列表在 .sessions 里
     found = getattr(response, "sessions", response)
-    items = [
-        {
+    # list_sessions 不带事件（标题和时间都拿不到），逐个取完整会话。
+    # 本地单用户工具、会话数量少，这个开销可以接受；最多列最近 30 个。
+    items = []
+    for s in found:
+        full = await _session_service.get_session(
+            app_name=APP_NAME, user_id=DEFAULT_USER_ID, session_id=s.id
+        )
+        if not full:
+            continue
+        items.append({
             "session_id": s.id,
-            "title": _session_title(s),
-            "updated_at": getattr(s, "last_update_timestamp", None),
-        }
-        for s in found
-    ]
-    # 新的排前面
-    items.sort(key=lambda x: x["updated_at"] or 0, reverse=True)
-    return {"sessions": items}
+            "title": _session_title(full),
+            "updated_at": _last_event_time(full),
+        })
+    items.sort(key=lambda x: x["updated_at"], reverse=True)
+    return {"sessions": items[:30]}
 
 
 @app.get("/api/sessions/{session_id}/events")

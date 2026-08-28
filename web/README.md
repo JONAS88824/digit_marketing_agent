@@ -56,8 +56,9 @@ npm run dev
 
 ## 已知限制
 
-- 会话和图片在内存里，重启后端即清空（学习阶段够用；要持久化换
-  DatabaseSessionService，agent 不用改）。
+- **会话已持久化**：存在 `web/.data/sessions.db`（SQLite，已 gitignore），
+  重启后端不丢；素材诊断的图片存在 `web/.data/artifacts/`。
+  出图文件本体仍在包根 `generated/`（磁盘目录，不随后端重启消失）。
 - 图像生成里的 provider 切换（Claude/OpenAI）需要 LiteLLM，未安装——
   配置中心如实标注了，选了也只是存为预留配置。
 - **`npm run dev` 运行期间不要跑 `npm run build`**：两者共用 `.next`

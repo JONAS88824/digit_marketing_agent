@@ -79,7 +79,7 @@ export function Sidebar({
           )}
         </div>
         <div className="px-2.5 pt-1 text-[10.5px] text-muted">
-          当前为内存会话，重启后端后历史消失（学习阶段够用）。
+          会话已持久化到本地，重启后端不丢。点会话可回看历史并继续聊。
         </div>
       </div>
 
