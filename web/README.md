@@ -60,4 +60,8 @@ npm run dev
   DatabaseSessionService，agent 不用改）。
 - 图像生成里的 provider 切换（Claude/OpenAI）需要 LiteLLM，未安装——
   配置中心如实标注了，选了也只是存为预留配置。
+- **`npm run dev` 运行期间不要跑 `npm run build`**：两者共用 `.next`
+  目录，build 会把 dev 的缓存写坏（页面 500）。验证类型用
+  `npx tsc --noEmit`；要跑 build 先停 dev。已经坏了的话：停 dev、
+  删掉 `.next` 目录、重启 dev。
 - 除本 README 外的说明见根目录 PROJECT_STATUS.md。
