@@ -14,3 +14,4 @@ generated/
 
 # Web UI 持久化数据（会话 SQLite + 产物图片）
 web/.data/
+PROJECT_STATUS.md

@@ -65,4 +65,3 @@ npm run dev
   目录，build 会把 dev 的缓存写坏（页面 500）。验证类型用
   `npx tsc --noEmit`；要跑 build 先停 dev。已经坏了的话：停 dev、
   删掉 `.next` 目录、重启 dev。
-- 除本 README 外的说明见根目录 PROJECT_STATUS.md。
