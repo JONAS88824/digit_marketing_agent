@@ -465,43 +465,58 @@ def _translate_event(event: Any, session_id: str) -> list[dict[str, Any]]:
     - confirmation_request  框架拦截了写操作，等用户确认
     - transfer        对话被转交给某位专员
     - artifact        有新产物（如生成的图片）
+
+    【顺序是信息】同一条消息里可能既有文字又有工具调用——
+    "先解读、再发起下一个工具"这个先后关系本身就是模型排版的一部分，
+    所以这里按 parts 的原始顺序逐个翻译，绝不把调用提到文字前面。
     """
     out: list[dict[str, Any]] = []
     if not event.author or event.author == "user":
         return out  # 用户自己的回声不发给前端
 
-    for fc in event.get_function_calls() or []:
-        if fc.name == REQUEST_CONFIRMATION_FUNCTION_CALL_NAME:
-            # 确认请求：args 里带着原始工具调用的名字和参数
-            args = fc.args or {}
-            original = args.get("originalFunctionCall") or {}
-            hint = (args.get("toolConfirmation") or {}).get("hint", "")
-            out.append({
-                "type": "confirmation_request",
-                "id": fc.id,
-                "tool_name": original.get("name"),
-                "args": original.get("args") or {},
-                "hint": hint,
-                "author": event.author,
-            })
-        else:
-            out.append({
-                "type": "tool_call",
-                "id": fc.id,
-                "name": fc.name,
-                "args": fc.args or {},
-                "author": event.author,
-            })
+    if event.content and event.content.parts:
+        for part in event.content.parts:
+            fc = getattr(part, "function_call", None)
+            if fc is not None:
+                if fc.name == REQUEST_CONFIRMATION_FUNCTION_CALL_NAME:
+                    # 确认请求：args 里带着原始工具调用的名字和参数
+                    args = fc.args or {}
+                    original = args.get("originalFunctionCall") or {}
+                    hint = (args.get("toolConfirmation") or {}).get("hint", "")
+                    out.append({
+                        "type": "confirmation_request",
+                        "id": fc.id,
+                        "tool_name": original.get("name"),
+                        "args": original.get("args") or {},
+                        "hint": hint,
+                        "author": event.author,
+                    })
+                else:
+                    out.append({
+                        "type": "tool_call",
+                        "id": fc.id,
+                        "name": fc.name,
+                        "args": fc.args or {},
+                        "author": event.author,
+                    })
+                continue
 
-    for fr in event.get_function_responses() or []:
-        out.append({
-            "type": "tool_result",
-            "id": fr.id,
-            "name": fr.name,
-            "result": fr.response,
-            "author": event.author,
-        })
+            fr = getattr(part, "function_response", None)
+            if fr is not None:
+                out.append({
+                    "type": "tool_result",
+                    "id": fr.id,
+                    "name": fr.name,
+                    "result": fr.response,
+                    "author": event.author,
+                })
+                continue
 
+            text = getattr(part, "text", None)
+            if text and not getattr(part, "thought", False):
+                out.append({"type": "text", "text": text, "author": event.author})
+
+    # actions（转交、产物）没有位置语义，跟在内容之后
     actions = getattr(event, "actions", None)
     if actions is not None:
         if getattr(actions, "transfer_to_agent", None):
@@ -516,11 +531,6 @@ def _translate_event(event: Any, session_id: str) -> list[dict[str, Any]]:
                 "filenames": list(actions.artifact_delta.keys()),
                 "session_id": session_id,
             })
-
-    if event.content and event.content.parts:
-        for part in event.content.parts:
-            if getattr(part, "text", None) and not getattr(part, "thought", False):
-                out.append({"type": "text", "text": part.text, "author": event.author})
 
     return out
 
