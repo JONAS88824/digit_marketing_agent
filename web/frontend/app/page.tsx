@@ -39,8 +39,15 @@ export default function Page() {
 
   useEffect(() => {
     refreshStatus();
-    refreshSessions();
-  }, [refreshStatus, refreshSessions]);
+    // 打开页面自动恢复最近一次会话（没有会话则停留空白态）
+    listSessions()
+      .then(async (list) => {
+        setSessions(list);
+        if (list.length > 0) await selectSession(list[0].session_id);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ============ SSE 事件 → 对话流条目 ============ */
 

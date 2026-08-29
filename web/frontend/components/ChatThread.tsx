@@ -6,6 +6,30 @@ import { agentLabel } from "@/lib/meta";
 import { ToolCard } from "./cards";
 import { ConfirmCard } from "./ConfirmCard";
 
+/** 轨迹条上的参数摘要：挑前两个短的标量参数（如 metric=cpc · 14 天）。
+ *
+ * 同一个工具会被连续调用多次（比如先查 CPC 再查 CTR 的逐日趋势），
+ * 只显示工具名的话两条轨迹一模一样，看不出哪条对哪张卡——
+ * 带上参数才能把"调用 → 结果"的配对关系摆在明面上。
+ */
+function argsSummary(args: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(args ?? {})) {
+    if (v == null || v === "" || parts.length >= 2) continue;
+    if (Array.isArray(v)) {
+      if (v.length > 0 && v.length <= 2 && v.every((x) => typeof x === "string" || typeof x === "number")) {
+        parts.push(`${k}=${v.join(",")}`);
+      }
+      continue;
+    }
+    if (typeof v === "object") continue;
+    const s = String(v);
+    if (s.length > 18) continue; // 太长的值不进摘要（完整参数在确认卡/折叠面板里看）
+    parts.push(`${k}=${s}`);
+  }
+  return parts.join(" · ");
+}
+
 export function ChatThread({
   items,
   sessionId,
@@ -99,7 +123,10 @@ export function ChatThread({
                     ) : (
                       <span>▸</span>
                     )}
-                    {item.name}
+                    <span className="text-ink2">{item.name}</span>
+                    {argsSummary(item.args) ? (
+                      <span className="text-muted">{argsSummary(item.args)}</span>
+                    ) : null}
                     {item.result == null ? <span className="text-ink2">调用中…</span> : null}
                   </div>
                   {item.result != null ? <ToolCard name={item.name} result={item.result} sessionId={sessionId} /> : null}
