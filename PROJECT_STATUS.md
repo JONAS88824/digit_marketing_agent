@@ -547,6 +547,7 @@ cd digital_marketing_agent\web\frontend && npm run dev            # 终端2：�
 
 | 日期 | 类型 | 变更内容 |
 |---|---|---|
+| 2026-08-29 | feat | **专员回复 Markdown 渲染 + 会话删除**：agent 文本从纯文本改为 react-markdown 渲染（粗体/列表/表格/代码/引用，GFM 表格支持——配合专员"能用表格就用表格"的汇报纪律），样式逐元素按设计令牌定制；会话列表每项悬停显示删除按钮（后端 DELETE /api/sessions 本来就有，接到界面上；删除当前会话自动清空对话区） |
 | 2026-08-29 | fix | **图文相间**（用户反馈"两张趋势图连在一起、解读文字堆在最后"）。两层根因两层修复：①`web/server.py` 的 SSE 翻译器原本把同一条消息里的工具调用统一排在文字前，破坏模型"先解读再发起下一个查询"的顺序——改为按 parts 原始顺序翻译（顺序本身是排版信息）；②performance_agent 指令加"查一个、解读一个"纪律：多指标趋势逐个查询逐个解读，禁止并行批量调 get_daily_trend 后统一写解读（Ads/GA4 对照查询仍可并行）。实测：CALL(cpc)→解读→CALL(ctr)→解读，图和分析紧挨 |
 | 2026-08-29 | feat | **Web 会话持久化**：`web/server.py` 的会话服务从 InMemory 换成 `DatabaseSessionService`（SQLite，存 `web/.data/sessions.db`，已 gitignore），产物服务换成 `FileArtifactService`（图片按文件存 `web/.data/artifacts/`）。重启后端不再丢会话历史，实测重启后列表、标题摘要、整段历史重放全部完好。新增依赖 `sqlalchemy` + `aiosqlite`（纯新增，ADK 的 [db] extra）。注意点：`list_sessions` 不带事件和时间戳，标题与排序改为逐会话 `get_session` 取完整事件（本地单用户场景开销可接受，最多列最近 30 个） |
 | 2026-08-28 | fix | **Web UI 三处修复**（用户实测反馈）：①三栏布局高度闭环——网格行加 `minmax(0,1fr)` 封顶 + 两个侧栏 `h-full`，修复"某栏内容过高把输入框顶出屏幕"；②会话列表不再显示 id 哈希，后端从会话首条用户消息提取 24 字摘要作标题（确认操作的 function_response 没有文本，不会污染标题）；③专员卡片从"点击即发送"改为"点击填入输入框"，修复"先点历史会话再点专员，问题被发进旧会话上下文导致答非所问" |

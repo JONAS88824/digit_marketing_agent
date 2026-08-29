@@ -5,6 +5,7 @@ import type { Item } from "@/lib/types";
 import { agentLabel } from "@/lib/meta";
 import { ToolCard } from "./cards";
 import { ConfirmCard } from "./ConfirmCard";
+import { Markdown } from "./Markdown";
 
 /** 轨迹条上的参数摘要：挑前两个短的标量参数（如 metric=cpc · 14 天）。
  *
@@ -109,7 +110,7 @@ export function ChatThread({
                     <span className="font-bold">{agentLabel(item.author)}</span>
                     <span className="ml-2 font-mono text-muted">{item.author}</span>
                   </div>
-                  <div className="max-w-[68ch] whitespace-pre-wrap text-[14px] leading-relaxed">{item.text}</div>
+                  <Markdown text={item.text} />
                 </div>
               );
 

@@ -34,12 +34,14 @@ export function Sidebar({
   activeSessionId,
   onNewSession,
   onSelectSession,
+  onDeleteSession,
   onPickQuestion,
 }: {
   sessions: SessionInfo[];
   activeSessionId: string | null;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
   onPickQuestion: (question: string) => void;
 }) {
   return (
@@ -62,19 +64,35 @@ export function Sidebar({
             <div className="px-2.5 py-1.5 text-xs text-muted">还没有会话</div>
           ) : (
             sessions.map((s) => (
-              <button
+              <div
                 key={s.session_id}
-                type="button"
-                onClick={() => onSelectSession(s.session_id)}
-                className={`flex items-center justify-between gap-1.5 rounded-md px-2.5 py-2 text-left text-[13px] ${
+                className={`group flex items-center gap-1 rounded-md px-2.5 py-2 text-left text-[13px] ${
                   s.session_id === activeSessionId ? "bg-surface3 font-semibold text-ink" : "text-ink2 hover:bg-surface2"
                 }`}
               >
-                <span className="truncate">{s.title || "新对话"}</span>
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 truncate text-left"
+                  onClick={() => onSelectSession(s.session_id)}
+                  title={s.title || "新对话"}
+                >
+                  {s.title || "新对话"}
+                </button>
                 <span className="shrink-0 font-mono text-[10.5px] text-muted">
                   {s.updated_at ? new Date(s.updated_at * 1000).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : ""}
                 </span>
-              </button>
+                <button
+                  type="button"
+                  aria-label={`删除会话 ${s.title || ""}`}
+                  title="删除这个会话"
+                  onClick={() => onDeleteSession(s.session_id)}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted opacity-0 transition-opacity hover:bg-surface3 hover:text-critical focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                    <path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
             ))
           )}
         </div>

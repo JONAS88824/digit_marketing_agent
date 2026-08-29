@@ -222,6 +222,7 @@ export default function Page() {
             activeSessionId={sessionId}
             onNewSession={newSession}
             onSelectSession={selectSession}
+            onDeleteSession={removeSession}
             onPickQuestion={(q) => setInput(q)}
           />
         </div>
